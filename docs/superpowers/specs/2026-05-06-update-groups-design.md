@@ -113,15 +113,16 @@ The rest of the endpoint (manifest construction, signing, multipart response, tr
 - `getLatestReleaseForUser(runtimeVersion: string, userId: string | null)` — returns the resolved release record, or `null`.
 - `listUpdateGroups()` / `getUpdateGroup(id)` / `createUpdateGroup(name)` / `deleteUpdateGroup(id)` — for dashboard CRUD.
 - `addUserToGroup(groupId, userId)` / `removeUserFromGroup(groupId, userId)` / `listGroupMembers(groupId)` / `listGroupsForUser(userId)`.
+- `getUpdateGroupByName(name)` — used by the upload and rollback handlers to resolve the name in the request to an id.
 - `createRelease` gains an optional `updateGroupId` parameter; defaults to the default group's id when omitted.
 
 The Supabase implementation mirrors the Postgres one, using the equivalent Supabase queries. The local-storage / no-DB code path is out of scope for groups — those installations effectively have only the default group.
 
 ## Upload, releases list, rollback
 
-- **Upload (`pages/api/upload.ts`):** Accept an optional `updateGroupId` form field. If absent, default to the default group. Validation: the supplied id must exist.
+- **Upload (`pages/api/upload.ts`):** Accept an optional `updateGroup` form field containing the group **name** (not ID). Names are easier to remember when uploading from a CI script or CLI. The handler resolves name → id; if no row matches, the request is rejected with 400. If absent, default to the default group.
 - **Releases list (`pages/api/releases.ts`):** Return `update_group_id` and group name alongside each release. The dashboard can filter by group.
-- **Rollback (`pages/api/rollback.ts`):** Inherit the source release's `update_group_id` for the new copy. The operator can override via a request field.
+- **Rollback (`pages/api/rollback.ts`):** Inherit the source release's group for the new copy. An optional `updateGroup` field (name, same convention as upload) overrides this.
 
 ## Dashboard UI
 
