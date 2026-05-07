@@ -31,6 +31,8 @@ export default async function releasesHandler(req: NextApiRequest, res: NextApiR
           size: file.metadata.size,
           commitHash,
           commitMessage: release?.commitMessage,
+          updateGroupId: release?.updateGroupId,
+          updateGroupName: release?.updateGroupName,
         });
       }
     }
