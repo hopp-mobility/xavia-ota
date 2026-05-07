@@ -64,10 +64,11 @@ describe('Manifest API', () => {
       commitHash: 'abc123',
       commitMessage: 'Test commit',
       updateId: 'test-update-id',
+      updateGroupId: 'g-prod',
     };
 
     const mockDatabase = {
-      getLatestReleaseRecordForRuntimeVersion: jest.fn().mockResolvedValue(mockRelease),
+      getLatestReleaseForUser: jest.fn().mockResolvedValue(mockRelease),
     } as unknown as DatabaseInterface;
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
@@ -117,10 +118,11 @@ describe('Manifest API', () => {
       commitHash: 'abc123',
       commitMessage: 'Test commit',
       updateId: 'different-update-id',
+      updateGroupId: 'g-prod',
     };
 
     const mockDatabase = {
-      getLatestReleaseRecordForRuntimeVersion: jest.fn().mockResolvedValue(mockRelease),
+      getLatestReleaseForUser: jest.fn().mockResolvedValue(mockRelease),
       getReleaseByPath: jest.fn().mockResolvedValue(mockRelease),
       createTracking: jest.fn().mockResolvedValue(undefined),
     } as unknown as DatabaseInterface;
@@ -145,7 +147,7 @@ describe('Manifest API', () => {
     (HashHelper.convertSHA256HashToUUID as jest.Mock).mockReturnValue(mockUUID);
 
     // Mock UpdateHelper methods
-    (UpdateHelper.getLatestUpdateBundlePathForRuntimeVersionAsync as jest.Mock).mockResolvedValue(
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockResolvedValue(
       'path/to/update'
     );
     (UpdateHelper.getMetadataAsync as jest.Mock).mockResolvedValue(mockMetadata);
@@ -198,13 +200,13 @@ describe('Manifest API', () => {
   it('should handle rollback update successfully', async () => {
     // Mock database
     const mockDatabase = {
-      getLatestReleaseRecordForRuntimeVersion: jest.fn().mockResolvedValue(null),
+      getLatestReleaseForUser: jest.fn().mockResolvedValue(null),
     } as unknown as DatabaseInterface;
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
     // Mock UpdateHelper methods
-    (UpdateHelper.getLatestUpdateBundlePathForRuntimeVersionAsync as jest.Mock).mockResolvedValue(
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockResolvedValue(
       'path/to/update'
     );
     (UpdateHelper.createRollBackDirectiveAsync as jest.Mock).mockResolvedValue({
@@ -253,13 +255,13 @@ describe('Manifest API', () => {
   it('should return NoUpdateAvailable when current update matches latest', async () => {
     // Mock database
     const mockDatabase = {
-      getLatestReleaseRecordForRuntimeVersion: jest.fn().mockResolvedValue(null),
+      getLatestReleaseForUser: jest.fn().mockResolvedValue(null),
     } as unknown as DatabaseInterface;
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
     // Mock UpdateHelper methods
-    (UpdateHelper.getLatestUpdateBundlePathForRuntimeVersionAsync as jest.Mock).mockResolvedValue(
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockResolvedValue(
       'path/to/update'
     );
 
@@ -312,13 +314,13 @@ describe('Manifest API', () => {
   it('should handle NoUpdateAvailable error from UpdateHelper', async () => {
     // Mock database
     const mockDatabase = {
-      getLatestReleaseRecordForRuntimeVersion: jest.fn().mockResolvedValue(null),
+      getLatestReleaseForUser: jest.fn().mockResolvedValue(null),
     } as unknown as DatabaseInterface;
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
     // Mock UpdateHelper to throw NoUpdateAvailableError
-    (UpdateHelper.getLatestUpdateBundlePathForRuntimeVersionAsync as jest.Mock).mockRejectedValue(
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockRejectedValue(
       new NoUpdateAvailableError()
     );
 
@@ -349,5 +351,64 @@ describe('Manifest API', () => {
 
     expect(res._getStatusCode()).toBe(200);
     expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).toHaveBeenCalled();
+  });
+
+  it('passes xavia-user-id to the resolver', async () => {
+    const mockRelease = {
+      id: 'release-id',
+      runtimeVersion: '1.0.0',
+      path: 'updates/1.0.0/x.zip',
+      timestamp: '2024-03-20T00:00:00Z',
+      commitHash: 'abc',
+      commitMessage: 'msg',
+      updateId: 'uid-1',
+      updateGroupId: 'g-beta',
+    };
+    const getLatestReleaseForUser = jest.fn().mockResolvedValue(mockRelease);
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
+      getLatestReleaseForUser,
+    });
+
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
+      .fn()
+      .mockResolvedValue('updates/1.0.0/x');
+
+    const { req, res } = createMocks({
+      method: 'GET',
+      headers: {
+        'expo-platform': 'ios',
+        'expo-runtime-version': '1.0.0',
+        'expo-protocol-version': '1',
+        'expo-current-update-id': 'uid-1',
+        'xavia-user-id': 'user-42',
+      },
+    });
+
+    await manifestEndpoint(req, res);
+
+    expect(getLatestReleaseForUser).toHaveBeenCalledWith('1.0.0', 'user-42');
+  });
+
+  it('treats missing xavia-user-id as anonymous (null userId)', async () => {
+    const getLatestReleaseForUser = jest.fn().mockResolvedValue(null);
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
+      getLatestReleaseForUser,
+    });
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
+      .fn()
+      .mockRejectedValue(new NoUpdateAvailableError());
+
+    const { req, res } = createMocks({
+      method: 'GET',
+      headers: {
+        'expo-platform': 'ios',
+        'expo-runtime-version': '1.0.0',
+        'expo-protocol-version': '1',
+      },
+    });
+
+    await manifestEndpoint(req, res);
+
+    expect(getLatestReleaseForUser).toHaveBeenCalledWith('1.0.0', null);
   });
 });

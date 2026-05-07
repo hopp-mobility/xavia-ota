@@ -3,6 +3,7 @@ import mime from 'mime';
 import { HashHelper } from './HashHelper';
 import { ZipHelper } from './ZipHelper';
 import { StorageFactory } from '../storage/StorageFactory';
+import { DatabaseFactory } from '../database/DatabaseFactory';
 
 export class NoUpdateAvailableError extends Error {}
 export type GetAssetMetadataArg =
@@ -24,6 +25,20 @@ export type GetAssetMetadataArg =
     };
 
 export class UpdateHelper {
+  static async getResolvedUpdateBundlePathAsync(
+    runtimeVersion: string,
+    userId: string | null
+  ): Promise<string> {
+    const release = await DatabaseFactory.getDatabase().getLatestReleaseForUser(
+      runtimeVersion,
+      userId
+    );
+    if (!release) {
+      throw new NoUpdateAvailableError();
+    }
+    return release.path.replace(/\.zip$/, '');
+  }
+
   static async getLatestUpdateBundlePathForRuntimeVersionAsync(
     runtimeVersion: string
   ): Promise<string> {

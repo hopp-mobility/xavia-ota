@@ -21,12 +21,18 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     return;
   }
 
+  const userId =
+    typeof req.headers['xavia-user-id'] === 'string' && req.headers['xavia-user-id']
+      ? (req.headers['xavia-user-id'] as string)
+      : null;
+
   logger.info('A client requested a release', {
     runtimeVersion: req.headers['expo-runtime-version'],
     platform: req.headers['expo-platform'],
     protocolVersion: req.headers['expo-protocol-version'],
     apiVersion: req.headers['expo-api-version'],
     currentUpdateId: req.headers['expo-current-update-id'],
+    userId,
   });
 
   const protocolVersionMaybeArray = req.headers['expo-protocol-version'];
@@ -59,7 +65,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
   }
 
   const database = DatabaseFactory.getDatabase();
-  const releaseRecord = await database.getLatestReleaseRecordForRuntimeVersion(runtimeVersion);
+  const releaseRecord = await database.getLatestReleaseForUser(runtimeVersion, userId);
 
   if (releaseRecord) {
     const updateId = releaseRecord.updateId;
@@ -68,6 +74,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     if (currentUpdateId === updateId) {
       logger.info('User is already running the latest release. Returning NoUpdateAvailable.', {
         runtimeVersion,
+        userId,
       });
       await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
       return;
@@ -76,12 +83,10 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
 
   let updateBundlePath: string;
   try {
-    updateBundlePath = await UpdateHelper.getLatestUpdateBundlePathForRuntimeVersionAsync(
-      runtimeVersion
-    );
+    updateBundlePath = await UpdateHelper.getResolvedUpdateBundlePathAsync(runtimeVersion, userId);
   } catch (error: any) {
     if (error instanceof NoUpdateAvailableError) {
-      logger.info('No update available for runtime version', { runtimeVersion });
+      logger.info('No update available for runtime version', { runtimeVersion, userId });
       await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
       return;
     }
