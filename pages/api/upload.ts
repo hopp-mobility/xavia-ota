@@ -31,6 +31,7 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
     const runtimeVersion = fields.runtimeVersion?.[0];
     const commitHash = fields.commitHash?.[0];
     const commitMessage = fields.commitMessage?.[0] || 'No message provided';
+    const updateGroupName = fields.updateGroup?.[0];
 
     if (!uploadKey || !file || !runtimeVersion || !commitHash) {
       res.status(400).json({ error: 'Missing upload key, file, runtime version or commit hash' });
@@ -42,11 +43,22 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
       return;
     }
 
+    const database = DatabaseFactory.getDatabase();
+    let updateGroup;
+    if (updateGroupName) {
+      updateGroup = await database.getUpdateGroupByName(updateGroupName);
+      if (!updateGroup) {
+        res.status(400).json({ error: `Unknown update group: ${updateGroupName}` });
+        return;
+      }
+    } else {
+      updateGroup = await database.getDefaultUpdateGroup();
+    }
+
     const storage = StorageFactory.getStorage();
     const timestamp = moment().utc().format('YYYYMMDDHHmmss');
     const updatePath = `updates/${runtimeVersion}`;
 
-    // Store the zipped file as is
     const zipContent = fs.readFileSync(file.filepath);
     const zipFolder = new AdmZip(file.filepath);
     const metadataJsonFile = await ZipHelper.getFileFromZip(zipFolder, 'metadata.json');
@@ -56,13 +68,14 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
 
     const path = await storage.uploadFile(`${updatePath}/${timestamp}.zip`, zipContent);
 
-    await DatabaseFactory.getDatabase().createRelease({
+    await database.createRelease({
       path,
       runtimeVersion,
       timestamp: moment().utc().toString(),
       commitHash,
       commitMessage,
       updateId,
+      updateGroupId: updateGroup.id,
     });
 
     res.status(200).json({ success: true, path });
