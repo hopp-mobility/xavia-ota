@@ -209,11 +209,17 @@ export default function UpdateGroupsPage() {
                         placeholder="User id"
                         value={newMemberId}
                         onChange={(e) => setNewMemberId(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') addMember();
+                        }}
                       />
                       <Input
                         placeholder="Label (optional, e.g. name or email)"
                         value={newMemberLabel}
                         onChange={(e) => setNewMemberLabel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') addMember();
+                        }}
                       />
                       <Button onClick={addMember}>Add</Button>
                     </HStack>
