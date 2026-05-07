@@ -20,7 +20,7 @@ updateGroup=$4
 
 # Generate a timestamp for the output folder
 timestamp=$(date -u +%Y%m%d%H%M%S)
-outputFolder="../ota-builds/$timestamp"
+outputFolder="./ota-builds/$timestamp"
 
 # Ask the user to confirm the hash, commit message, runtime version, and output folder
 echo "Output Folder: $outputFolder"
@@ -42,13 +42,15 @@ mkdir -p $outputFolder
 # Run expo export with the specified output folder
 npx expo export --output-dir $outputFolder
 
-# Extract expo config property from app.json and save to expoconfig.json
-jq '.expo' app.json > $outputFolder/expoconfig.json
+# Resolve the expo config (works for app.json, app.config.js, or app.config.ts)
+# --type public emits the manifest-shape config, matching what's served to clients.
+npx expo config --type public --json > $outputFolder/expoconfig.json
 
 
-# Zip the output folder
-cd $outputFolder  
-zip -q -r ${timestamp}.zip .
+# Zip the output folder (operate inside it, then return to project root)
+projectRoot=$(pwd)
+cd "$outputFolder"
+zip -q -r "${timestamp}.zip" .
 
 
 # Upload the zip file to the server
@@ -61,7 +63,7 @@ curl -X POST "$serverHost/api/upload" "${uploadArgs[@]}"
 echo ""
 
 echo "Uploaded to $serverHost/api/upload"
-cd ..
+cd "$projectRoot"
 
 # Remove the output folder and zip file
 rm -rf $outputFolder
