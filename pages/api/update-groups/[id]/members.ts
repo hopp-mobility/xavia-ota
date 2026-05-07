@@ -42,8 +42,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(400).json({ error: 'Missing or empty `userId`' });
       return;
     }
+    const label =
+      typeof req.body?.label === 'string' ? req.body.label.trim() || undefined : undefined;
     try {
-      await db.addUserToGroup(id, userId);
+      await db.addUserToGroup(id, userId, label);
       res.status(204).end();
     } catch (error) {
       logger.error(error);

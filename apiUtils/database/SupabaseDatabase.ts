@@ -268,16 +268,17 @@ export class SupabaseDatabase implements DatabaseInterface {
     return (data ?? []).map((m) => ({
       updateGroupId: m.update_group_id,
       userId: m.user_id,
+      label: m.label ?? undefined,
       createdAt: m.created_at,
     }));
   }
 
-  async addUserToGroup(updateGroupId: string, userId: string): Promise<void> {
+  async addUserToGroup(updateGroupId: string, userId: string, label?: string): Promise<void> {
     const { error } = await this.supabase
       .from(Tables.UPDATE_GROUP_MEMBERS)
       .upsert(
-        { update_group_id: updateGroupId, user_id: userId },
-        { onConflict: 'update_group_id,user_id', ignoreDuplicates: true }
+        { update_group_id: updateGroupId, user_id: userId, label: label ?? null },
+        { onConflict: 'update_group_id,user_id' }
       );
     if (error) throw new Error(error.message);
   }

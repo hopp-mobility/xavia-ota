@@ -32,6 +32,7 @@ export interface UpdateGroup {
 export interface UpdateGroupMember {
   updateGroupId: string;
   userId: string;
+  label?: string;
   createdAt: string;
 }
 
@@ -55,7 +56,7 @@ export interface DatabaseInterface {
 
   // Membership
   listGroupMembers(updateGroupId: string): Promise<UpdateGroupMember[]>;
-  addUserToGroup(updateGroupId: string, userId: string): Promise<void>;
+  addUserToGroup(updateGroupId: string, userId: string, label?: string): Promise<void>;
   removeUserFromGroup(updateGroupId: string, userId: string): Promise<void>;
 
   // Resolver

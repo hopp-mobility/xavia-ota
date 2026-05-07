@@ -76,10 +76,12 @@ export default function ReleasesPage() {
     fetch('/api/update-groups')
       .then((r) => r.json())
       .then((data) => {
-        setUpdateGroups(data.groups);
-        const def = data.groups.find((g: { isDefault: boolean }) => g.isDefault);
+        const groups = data.groups ?? [];
+        setUpdateGroups(groups);
+        const def = groups.find((g: { isDefault: boolean }) => g.isDefault);
         if (def) setSelectedGroupName(def.name);
-      });
+      })
+      .catch(() => setUpdateGroups([]));
   }, []);
 
   const handleUpload = async (e: React.FormEvent) => {

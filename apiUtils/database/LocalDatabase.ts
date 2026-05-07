@@ -182,7 +182,7 @@ export class PostgresDatabase implements DatabaseInterface {
 
   async listGroupMembers(updateGroupId: string): Promise<UpdateGroupMember[]> {
     const { rows } = await this.pool.query(
-      `SELECT update_group_id as "updateGroupId", user_id as "userId", created_at as "createdAt"
+      `SELECT update_group_id as "updateGroupId", user_id as "userId", label, created_at as "createdAt"
        FROM ${Tables.UPDATE_GROUP_MEMBERS} WHERE update_group_id = $1
        ORDER BY created_at DESC`,
       [updateGroupId]
@@ -190,12 +190,12 @@ export class PostgresDatabase implements DatabaseInterface {
     return rows;
   }
 
-  async addUserToGroup(updateGroupId: string, userId: string): Promise<void> {
+  async addUserToGroup(updateGroupId: string, userId: string, label?: string): Promise<void> {
     await this.pool.query(
-      `INSERT INTO ${Tables.UPDATE_GROUP_MEMBERS} (update_group_id, user_id)
-       VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [updateGroupId, userId]
+      `INSERT INTO ${Tables.UPDATE_GROUP_MEMBERS} (update_group_id, user_id, label)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (update_group_id, user_id) DO UPDATE SET label = EXCLUDED.label`,
+      [updateGroupId, userId, label ?? null]
     );
   }
 

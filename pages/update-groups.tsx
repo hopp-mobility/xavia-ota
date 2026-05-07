@@ -24,7 +24,7 @@ type UpdateGroup = {
   createdAt: string;
 };
 
-type Member = { updateGroupId: string; userId: string; createdAt: string };
+type Member = { updateGroupId: string; userId: string; label?: string; createdAt: string };
 
 export default function UpdateGroupsPage() {
   const [groups, setGroups] = useState<UpdateGroup[] | null>(null);
@@ -32,6 +32,7 @@ export default function UpdateGroupsPage() {
   const [selected, setSelected] = useState<UpdateGroup | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [newMemberId, setNewMemberId] = useState('');
+  const [newMemberLabel, setNewMemberLabel] = useState('');
 
   async function refreshGroups() {
     const res = await fetch('/api/update-groups');
@@ -85,13 +86,17 @@ export default function UpdateGroupsPage() {
     const res = await fetch(`/api/update-groups/${selected.id}/members`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId: newMemberId.trim() }),
+      body: JSON.stringify({
+        userId: newMemberId.trim(),
+        label: newMemberLabel.trim() || undefined,
+      }),
     });
     if (!res.ok) {
       showToast('Failed to add member', 'error');
       return;
     }
     setNewMemberId('');
+    setNewMemberLabel('');
     refreshMembers(selected);
   }
 
@@ -180,7 +185,14 @@ export default function UpdateGroupsPage() {
                         {members.map((m) => (
                           <ListItem key={m.userId} p={2} borderWidth="1px" borderRadius="md">
                             <HStack justify="space-between">
-                              <Text>{m.userId}</Text>
+                              <VStack align="start" spacing={0}>
+                                {m.label && <Text fontWeight="medium">{m.label}</Text>}
+                                <Text
+                                  fontSize={m.label ? 'sm' : 'md'}
+                                  color={m.label ? 'gray.600' : 'inherit'}>
+                                  {m.userId}
+                                </Text>
+                              </VStack>
                               <Button
                                 size="xs"
                                 colorScheme="red"
@@ -197,6 +209,11 @@ export default function UpdateGroupsPage() {
                         placeholder="User id"
                         value={newMemberId}
                         onChange={(e) => setNewMemberId(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Label (optional, e.g. name or email)"
+                        value={newMemberLabel}
+                        onChange={(e) => setNewMemberLabel(e.target.value)}
                       />
                       <Button onClick={addMember}>Add</Button>
                     </HStack>

@@ -37,7 +37,25 @@ describe('Update group members API', () => {
     });
     await membersHandler(req, res);
 
-    expect(db.addUserToGroup).toHaveBeenCalledWith('g1', 'u42');
+    expect(db.addUserToGroup).toHaveBeenCalledWith('g1', 'u42', undefined);
+    expect(res._getStatusCode()).toBe(204);
+  });
+
+  it('POST passes label through', async () => {
+    const db = {
+      getUpdateGroup: jest.fn().mockResolvedValue({ id: 'g1', name: 'beta', isDefault: false, createdAt: 't' }),
+      addUserToGroup: jest.fn().mockResolvedValue(undefined),
+    };
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
+
+    const { req, res } = createMocks({
+      method: 'POST',
+      query: { id: 'g1' },
+      body: { userId: 'u42', label: 'hannes@hopp.bike' },
+    });
+    await membersHandler(req, res);
+
+    expect(db.addUserToGroup).toHaveBeenCalledWith('g1', 'u42', 'hannes@hopp.bike');
     expect(res._getStatusCode()).toBe(204);
   });
 
