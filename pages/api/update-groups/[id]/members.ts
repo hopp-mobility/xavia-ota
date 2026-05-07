@@ -32,7 +32,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'POST') {
     if (group.isDefault) {
-      res.status(400).json({ error: 'The default group has implicit membership and cannot have explicit members' });
+      res.status(400).json({
+        error: 'The default group has implicit membership and cannot have explicit members',
+      });
       return;
     }
     const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';

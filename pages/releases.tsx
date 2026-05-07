@@ -150,8 +150,7 @@ export default function ReleasesPage() {
               p={6}
               borderWidth={1}
               borderRadius="md"
-              maxW="lg"
-            >
+              maxW="lg">
               <Heading size="sm" mb={4}>
                 Upload Release
               </Heading>
@@ -193,8 +192,7 @@ export default function ReleasesPage() {
                   <FormLabel>Update group</FormLabel>
                   <Select
                     value={selectedGroupName}
-                    onChange={(e) => setSelectedGroupName(e.target.value)}
-                  >
+                    onChange={(e) => setSelectedGroupName(e.target.value)}>
                     {updateGroups.map((g) => (
                       <option key={g.id} value={g.name}>
                         {g.name}
@@ -216,8 +214,7 @@ export default function ReleasesPage() {
                   type="submit"
                   colorScheme="blue"
                   isLoading={uploading}
-                  loadingText="Uploading..."
-                >
+                  loadingText="Uploading...">
                   Upload
                 </Button>
               </VStack>
@@ -254,8 +251,7 @@ export default function ReleasesPage() {
                             <Badge
                               colorScheme={
                                 release.updateGroupName === 'production' ? 'green' : 'purple'
-                              }
-                            >
+                              }>
                               {release.updateGroupName}
                             </Badge>
                           )}
@@ -291,14 +287,12 @@ export default function ReleasesPage() {
                               onClick={async () => {
                                 setIsOpen(true);
                                 setSelectedRelease(release);
-                              }}
-                            >
+                              }}>
                               <AlertDialog
                                 isOpen={isOpen}
                                 leastDestructiveRef={cancelRef}
                                 onClose={() => setIsOpen(false)}
-                                isCentered
-                              >
+                                isCentered>
                                 <AlertDialogOverlay>
                                   <AlertDialogContent>
                                     <AlertDialogHeader fontSize="lg" fontWeight="bold">
@@ -312,8 +306,7 @@ export default function ReleasesPage() {
                                         colorScheme="green"
                                         mt={4}
                                         padding={4}
-                                        className="w-full"
-                                      >
+                                        className="w-full">
                                         <Text fontSize="sm">
                                           Commit Hash: {selectedRelease?.commitHash}
                                         </Text>
@@ -354,8 +347,7 @@ export default function ReleasesPage() {
                                           fetchReleases();
                                           setIsOpen(false);
                                         }}
-                                        ml={3}
-                                      >
+                                        ml={3}>
                                         Rollback
                                       </Button>
                                     </AlertDialogFooter>

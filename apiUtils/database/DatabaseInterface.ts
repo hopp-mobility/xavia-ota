@@ -59,8 +59,5 @@ export interface DatabaseInterface {
   removeUserFromGroup(updateGroupId: string, userId: string): Promise<void>;
 
   // Resolver
-  getLatestReleaseForUser(
-    runtimeVersion: string,
-    userId: string | null
-  ): Promise<Release | null>;
+  getLatestReleaseForUser(runtimeVersion: string, userId: string | null): Promise<Release | null>;
 }

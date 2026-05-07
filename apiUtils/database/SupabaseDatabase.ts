@@ -254,10 +254,7 @@ export class SupabaseDatabase implements DatabaseInterface {
   }
 
   async deleteUpdateGroup(id: string): Promise<void> {
-    const { error } = await this.supabase
-      .from(Tables.UPDATE_GROUPS)
-      .delete()
-      .eq('id', id);
+    const { error } = await this.supabase.from(Tables.UPDATE_GROUPS).delete().eq('id', id);
     if (error) throw new Error(error.message);
   }
 
@@ -305,7 +302,9 @@ export class SupabaseDatabase implements DatabaseInterface {
         .eq('user_id', userId);
       if (memErr) throw new Error(memErr.message);
 
-      const groupIds = (memberships ?? []).map((m: { update_group_id: string }) => m.update_group_id);
+      const groupIds = (memberships ?? []).map(
+        (m: { update_group_id: string }) => m.update_group_id
+      );
       if (groupIds.length > 0) {
         const { data, error } = await this.supabase
           .from(Tables.RELEASES)

@@ -10,7 +10,13 @@ export default async function rollbackHandler(req: NextApiRequest, res: NextApiR
     return;
   }
 
-  const { path, runtimeVersion, commitHash, commitMessage, updateGroup: overrideGroupName } = req.body;
+  const {
+    path,
+    runtimeVersion,
+    commitHash,
+    commitMessage,
+    updateGroup: overrideGroupName,
+  } = req.body;
 
   if (!path) {
     res.status(400).json({ error: 'Missing path' });
