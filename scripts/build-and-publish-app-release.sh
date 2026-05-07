@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # Check if the correct number of arguments are provided
-if [ "$#" -ne 3 ]; then
-  echo "Usage: $0 <runtimeVersion> <xavia-ota-url> <upload-key>"
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+  echo "Usage: $0 <runtimeVersion> <xavia-ota-url> <upload-key> [updateGroup]"
+  echo ""
+  echo "  updateGroup is optional; omit to publish to the default group."
   exit 1
 fi
 
@@ -14,6 +16,7 @@ commitMessage=$(git log -1 --pretty=%B)
 runtimeVersion=$1
 serverHost=$2
 uploadKey=$3
+updateGroup=$4
 
 # Generate a timestamp for the output folder
 timestamp=$(date -u +%Y%m%d%H%M%S)
@@ -24,6 +27,7 @@ echo "Output Folder: $outputFolder"
 echo "Runtime Version: $runtimeVersion"
 echo "Commit Hash: $commitHash"
 echo "Commit Message: $commitMessage"
+echo "Update Group: ${updateGroup:-(default)}"
 
 read -p "Do you want to proceed with these values? (y/n): " confirm
 
@@ -48,7 +52,11 @@ zip -q -r ${timestamp}.zip .
 
 
 # Upload the zip file to the server
-curl -X POST $serverHost/api/upload -F "file=@${timestamp}.zip" -F "runtimeVersion=$runtimeVersion" -F "commitHash=$commitHash" -F "commitMessage=$commitMessage" -F "uploadKey=$uploadKey"
+uploadArgs=(-F "file=@${timestamp}.zip" -F "runtimeVersion=$runtimeVersion" -F "commitHash=$commitHash" -F "commitMessage=$commitMessage" -F "uploadKey=$uploadKey")
+if [ -n "$updateGroup" ]; then
+  uploadArgs+=(-F "updateGroup=$updateGroup")
+fi
+curl -X POST "$serverHost/api/upload" "${uploadArgs[@]}"
 
 echo ""
 
