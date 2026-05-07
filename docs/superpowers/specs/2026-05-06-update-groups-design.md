@@ -5,9 +5,8 @@
 Replace the current "every release goes to everyone on a runtime version" distribution model with grouped releases. Each release belongs to one **update group** (e.g. `production`, `beta`, `acme-debug`). Users can be assigned to zero or more non-default groups. The manifest endpoint resolves the release a given user receives based on their group memberships.
 
 The motivating scenarios:
-- **Beta channel** — a stable subset of testers receives builds before production.
+- **Beta channel** — a stable subset of testers receives builds before production. Beta runs as its own track and is not interrupted by production patches.
 - **Per-customer / per-user diagnostic builds** — ship instrumentation or a one-off fix to a single user without affecting anyone else.
-- **Automatic cleanup** — when production catches up, special-purpose groups become irrelevant without manual intervention.
 
 ## Non-goals
 
@@ -57,31 +56,44 @@ ALTER TABLE releases
 
 ## Resolver
 
-The current rule is "latest release for this runtime version." The new rule is:
+The current rule is "latest release for this runtime version." The new rule is two-step:
 
-> Newest release (by `timestamp`) for this `runtime_version`, where `update_group_id` is either the default group or a group the requesting user belongs to.
+> 1. If the user belongs to any non-default groups, return the newest release (by `timestamp`) across those groups for this `runtime_version`.
+> 2. If step 1 returns nothing — either because the user is in zero non-default groups, or none of their groups has a release for this runtime version — return the newest release in the default group.
 
-In SQL:
+In SQL (single CTE-based query):
 
 ```sql
-SELECT r.*
-FROM releases r
-WHERE r.runtime_version = $1
-  AND r.update_group_id IN (
-    SELECT id FROM update_groups WHERE is_default = true
-    UNION
-    SELECT update_group_id FROM update_group_members WHERE user_id = $2
-  )
-ORDER BY r.timestamp DESC
+WITH user_group_release AS (
+  SELECT r.*
+  FROM releases r
+  WHERE r.runtime_version = $1
+    AND r.update_group_id IN (
+      SELECT update_group_id FROM update_group_members WHERE user_id = $2
+    )
+  ORDER BY r.timestamp DESC
+  LIMIT 1
+),
+default_release AS (
+  SELECT r.*
+  FROM releases r
+  JOIN update_groups g ON r.update_group_id = g.id
+  WHERE r.runtime_version = $1
+    AND g.is_default = true
+  ORDER BY r.timestamp DESC
+  LIMIT 1
+)
+SELECT * FROM user_group_release
+UNION ALL
+SELECT * FROM default_release WHERE NOT EXISTS (SELECT 1 FROM user_group_release)
 LIMIT 1;
 ```
 
-This single query produces the desired fall-through behavior:
-- A diagnostic build issued to one user is served to that user until production publishes something newer, at which point production wins automatically.
-- Beta testers get beta when beta is newer than prod, prod otherwise.
-- A user in zero non-default groups always receives the latest production release.
+**Why "non-default always wins" instead of "newest timestamp wins":** The naive timestamp rule causes silent regressions. A beta tester running release `B` (containing weeks of unreleased features) would be yanked back to production the moment any prod patch ships with a newer timestamp, since prod-patch's timestamp would beat `B`'s. The two-step rule keeps beta testers on beta unless beta has nothing for their runtime version.
 
-**No user ID supplied:** If the request omits the user ID header, the resolver uses only the default group. Same behavior as a user in zero groups. This preserves backward compatibility for older app builds that pre-date this feature.
+**Trade-off:** Beta does not automatically inherit production patches. If prod ships a fix that should also be in beta, the operator must publish a beta release that contains the fix. See "Operational guidance" below.
+
+**No user ID supplied:** If the request omits the user ID header, step 1 returns nothing and the resolver falls through to the default group. Same behavior as a user in zero non-default groups. This preserves backward compatibility for older app builds that pre-date this feature.
 
 ## Client identification
 
@@ -138,29 +150,39 @@ Upload form gets a group selector defaulting to the default group.
 | Case | Behavior |
 |---|---|
 | User in only default group | Always gets latest default release. |
-| User in `beta`, beta newer than prod | Gets beta. |
-| User in `beta`, prod ships something newer | Gets prod on next poll. Beta release becomes irrelevant. |
-| Diagnostic group with one user, you forget to clean it up | Self-heals on next prod release. Group can be deleted at any time after that. |
-| User removed from `beta` | Next manifest poll resolves against default group only — they will not be served any further beta releases. However, if they already downloaded a beta release, their app keeps running it until a newer release reachable to them (a new prod release, or a prod re-publish that bumps the timestamp) is available. Removal does not retroactively claw back a downloaded bundle. |
-| Group deleted while user is on one of its releases | `releases.update_group_id` would dangle. Solution: deleting a group requires the operator to first move or delete its releases. Enforced at the DB level via no `ON DELETE` cascade on the FK from `releases`. |
+| User in `beta`, beta has a release for this runtime version | Gets latest beta release, regardless of prod's timestamp. |
+| User in `beta`, prod ships a patch newer than the latest beta | Stays on beta. Prod patch is not visible to beta users until a beta release is published containing it. |
+| User in `beta`, beta has no release for this runtime version | Falls through to latest prod. (Safety net, e.g. when bumping runtime version.) |
+| User in `beta` + `acme-debug` | Newest release across the two non-default groups wins (timestamp tie-break). |
+| User in diagnostic group, prod ships fixes | User stays on diagnostic until operator removes them from the group. Cleanup is explicit, not automatic. |
+| User removed from `beta` | Next manifest poll resolves against default group only — they will not be served any further beta releases. They download whatever prod's latest is, even if older by timestamp than their currently-running beta build, because the bundle's update_id differs. |
+| Group deleted while it owns a release | Rejected. The FK from `releases.update_group_id` uses default `NO ACTION`, so deleting a group with releases fails. Operator must move or delete the releases first. Member rows cascade-delete and don't block deletion. |
 | Manifest request with no user ID header | Treated as anonymous → default group only. |
 | Two clients on the same `user_id` (multiple devices) | Both get the same resolved release, which is the desired behavior. |
 
-## Operational levers (the "force a user back to production" question)
+## Operational guidance
 
-The fall-through behavior handles cleanup automatically once production catches up. For situations where you need a user off a special build *immediately*:
+**Keeping beta ahead of prod.** Because non-default groups always win, beta users will not pick up prod patches automatically. Whenever a fix lands in prod that should also be in beta, the operator must publish a beta release that contains it. The recommended cadence: every prod release is accompanied by (or quickly followed by) a beta release built from a branch that has the prod commit merged in. Without this discipline, beta drifts behind prod over time.
 
-- **Re-publish the latest production release.** Bumps its timestamp past the special build. Cheapest option, no schema involved.
-- **Move the user out of the special group AND re-publish prod.** Same as above plus closes the door on subsequent special releases.
-- **Embedded rollback.** Out of scope for this work but available in the protocol if ever needed.
+**Forcing a user off a special build.** To move a user off a diagnostic or beta release:
+
+- **Remove the user from the group.** Their next manifest poll falls through to the default group, and they download the latest prod release on the next poll.
+- **Delete the group entirely** (after first reassigning or deleting its releases). All members fall through to prod.
+- **Embedded rollback.** Available in the protocol but not surfaced in the UI; out of scope for this work.
 
 These are documented operator workflows, not new features.
 
 ## Testing
 
-- Unit tests for the resolver query covering: anonymous user, user in default only, user in beta with beta newer, user in beta with prod newer, user in two non-default groups, runtime version with no releases, runtime version with releases only in groups the user can't access (anonymous user → default still wins; user with no access → no release returned, manifest endpoint returns no-update directive).
-- Integration test for `manifest.ts` exercising header presence and absence.
-- Migration test confirming pre-existing releases land in the default group.
+- Unit tests for the resolver query covering:
+  - Anonymous user (no header) → latest default release.
+  - User with no group memberships → latest default release.
+  - User in `beta`, beta has a release for the runtime version (older than prod's latest) → beta release. Confirms non-default wins regardless of prod timestamp.
+  - User in `beta`, beta has no release for the runtime version → falls through to latest default release.
+  - User in two non-default groups → newest by timestamp across the two.
+  - Runtime version with no releases at all → returns null; manifest endpoint emits no-update directive.
+- Integration test for `manifest.ts` exercising user-id header presence and absence, and confirming the resolved release is the one served.
+- Migration test confirming pre-existing releases land in the default group and `update_group_id` becomes `NOT NULL`.
 
 ## Out of scope (followups)
 
