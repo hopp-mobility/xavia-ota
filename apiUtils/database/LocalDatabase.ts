@@ -211,35 +211,24 @@ export class PostgresDatabase implements DatabaseInterface {
     runtimeVersion: string,
     userId: string | null
   ): Promise<Release | null> {
-    const baseSelect = `
+    // Reachable releases for this user: anything in the default group, plus anything
+    // in a non-default group the user is a member of. The LEFT JOIN to memberships
+    // hits the (update_group_id, user_id) primary key index. Non-default releases
+    // sort before the default fallback (booleans order FALSE < TRUE in postgres).
+    const query = `
       SELECT r.id, r.runtime_version as "runtimeVersion", r.path, r.timestamp,
              r.commit_hash as "commitHash", r.commit_message as "commitMessage",
              r.update_id as "updateId", r.update_group_id as "updateGroupId"
       FROM ${Tables.RELEASES} r
-    `;
-
-    if (userId) {
-      const groupQuery = `
-        ${baseSelect}
-        WHERE r.runtime_version = $1
-          AND r.update_group_id IN (
-            SELECT update_group_id FROM ${Tables.UPDATE_GROUP_MEMBERS} WHERE user_id = $2
-          )
-        ORDER BY r.timestamp DESC
-        LIMIT 1
-      `;
-      const groupResult = await this.pool.query(groupQuery, [runtimeVersion, userId]);
-      if (groupResult.rows[0]) return groupResult.rows[0];
-    }
-
-    const defaultQuery = `
-      ${baseSelect}
       JOIN ${Tables.UPDATE_GROUPS} g ON r.update_group_id = g.id
-      WHERE r.runtime_version = $1 AND g.is_default = true
-      ORDER BY r.timestamp DESC
+      LEFT JOIN ${Tables.UPDATE_GROUP_MEMBERS} m
+        ON m.update_group_id = r.update_group_id AND m.user_id = $2
+      WHERE r.runtime_version = $1
+        AND (g.is_default = true OR m.user_id IS NOT NULL)
+      ORDER BY g.is_default ASC, r.timestamp DESC
       LIMIT 1
     `;
-    const defaultResult = await this.pool.query(defaultQuery, [runtimeVersion]);
-    return defaultResult.rows[0] || null;
+    const { rows } = await this.pool.query(query, [runtimeVersion, userId]);
+    return rows[0] || null;
   }
 }
