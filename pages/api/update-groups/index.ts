@@ -1,11 +1,13 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
+import { requireSession } from '../../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../../apiUtils/database/DatabaseFactory';
 import { getLogger } from '../../../apiUtils/logger';
 
 const logger = getLogger('updateGroups');
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!requireSession(req, res)) return;
   const db = DatabaseFactory.getDatabase();
 
   if (req.method === 'GET') {

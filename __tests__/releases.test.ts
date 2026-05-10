@@ -3,6 +3,7 @@ import { createMocks } from 'node-mocks-http';
 import { DatabaseFactory } from '../apiUtils/database/DatabaseFactory';
 import { StorageFactory } from '../apiUtils/storage/StorageFactory';
 import releasesHandler from '../pages/api/releases';
+import { authedCookies } from './helpers/session';
 
 jest.mock('../apiUtils/database/DatabaseFactory');
 jest.mock('../apiUtils/storage/StorageFactory');
@@ -17,6 +18,12 @@ describe('Releases API', () => {
     await releasesHandler(req, res);
     expect(res._getStatusCode()).toBe(405);
     expect(JSON.parse(res._getData())).toMatchSnapshot();
+  });
+
+  it('returns 401 without a valid session cookie', async () => {
+    const { req, res } = createMocks({ method: 'GET' });
+    await releasesHandler(req, res);
+    expect(res._getStatusCode()).toBe(401);
   });
 
   it('should return releases successfully', async () => {
@@ -43,7 +50,7 @@ describe('Releases API', () => {
     (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
-    const { req, res } = createMocks({ method: 'GET' });
+    const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
     await releasesHandler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
@@ -57,7 +64,7 @@ describe('Releases API', () => {
 
     (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
 
-    const { req, res } = createMocks({ method: 'GET' });
+    const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
     await releasesHandler(req, res);
 
     expect(res._getStatusCode()).toBe(500);
@@ -88,7 +95,7 @@ describe('Releases API', () => {
     (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
-    const { req, res } = createMocks({ method: 'GET' });
+    const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
     await releasesHandler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
