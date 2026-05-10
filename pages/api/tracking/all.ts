@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { requireSession } from '../../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../../apiUtils/database/DatabaseFactory';
 import { getLogger } from '../../../apiUtils/logger';
 import { TrackingMetrics } from '../../../apiUtils/database/DatabaseInterface';
@@ -15,6 +16,7 @@ export default async function allTrackingHandler(req: NextApiRequest, res: NextA
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
+  if (!requireSession(req, res)) return;
 
   logger.info('Fetching all tracking data for all releases');
 

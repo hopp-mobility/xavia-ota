@@ -12,7 +12,12 @@ export default function Layout({ children, ...props }: { children: React.ReactNo
     { name: 'Update groups', path: '/update-groups', icon: <FaLayerGroup fontSize="1.25rem" /> },
   ];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch {
+      // best-effort; cookie may still be cleared by an expired session anyway
+    }
     localStorage.removeItem('isAuthenticated');
     router.push('/');
   };

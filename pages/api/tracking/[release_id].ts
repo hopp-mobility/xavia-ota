@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { requireSession } from '../../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../../apiUtils/database/DatabaseFactory';
 import { getLogger } from '../../../apiUtils/logger';
 
@@ -9,6 +10,7 @@ export default async function trackingByReleaseHandler(req: NextApiRequest, res:
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
+  if (!requireSession(req, res)) return;
 
   const { release_id } = req.query;
 

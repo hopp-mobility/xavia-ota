@@ -1,3 +1,5 @@
 process.env.HOSTNAME = 'http://localhost:3001';
 process.env.DB_TYPE = 'postgres';
 process.env.UPLOAD_KEY = 'abc123def456';
+process.env.SESSION_SECRET = 'test-secret-do-not-use-in-prod';
+process.env.ADMIN_PASSWORD = 'test-admin-password';

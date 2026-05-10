@@ -3,6 +3,7 @@ import { createMocks } from 'node-mocks-http';
 import { DatabaseFactory } from '../apiUtils/database/DatabaseFactory';
 import indexHandler from '../pages/api/update-groups/index';
 import idHandler from '../pages/api/update-groups/[id]';
+import { authedCookies } from './helpers/session';
 
 jest.mock('../apiUtils/database/DatabaseFactory');
 
@@ -17,7 +18,7 @@ describe('Update groups API', () => {
     const db = { listUpdateGroups: jest.fn().mockResolvedValue(groups) };
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
 
-    const { req, res } = createMocks({ method: 'GET' });
+    const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
     await indexHandler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
@@ -32,6 +33,7 @@ describe('Update groups API', () => {
     const { req, res } = createMocks({
       method: 'POST',
       body: { name: 'alpha' },
+      cookies: authedCookies(),
     });
     await indexHandler(req, res);
 
@@ -42,7 +44,7 @@ describe('Update groups API', () => {
 
   it('POST /api/update-groups rejects missing name', async () => {
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({});
-    const { req, res } = createMocks({ method: 'POST', body: {} });
+    const { req, res } = createMocks({ method: 'POST', body: {}, cookies: authedCookies() });
     await indexHandler(req, res);
     expect(res._getStatusCode()).toBe(400);
   });
@@ -56,7 +58,7 @@ describe('Update groups API', () => {
     };
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
 
-    const { req, res } = createMocks({ method: 'DELETE', query: { id: 'g1' } });
+    const { req, res } = createMocks({ method: 'DELETE', query: { id: 'g1' }, cookies: authedCookies() });
     await idHandler(req, res);
 
     expect(res._getStatusCode()).toBe(400);
@@ -72,10 +74,16 @@ describe('Update groups API', () => {
     };
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
 
-    const { req, res } = createMocks({ method: 'DELETE', query: { id: 'g2' } });
+    const { req, res } = createMocks({ method: 'DELETE', query: { id: 'g2' }, cookies: authedCookies() });
     await idHandler(req, res);
 
     expect(db.deleteUpdateGroup).toHaveBeenCalledWith('g2');
     expect(res._getStatusCode()).toBe(204);
+  });
+
+  it('returns 401 without a valid session cookie', async () => {
+    const { req, res } = createMocks({ method: 'GET' });
+    await indexHandler(req, res);
+    expect(res._getStatusCode()).toBe(401);
   });
 });
