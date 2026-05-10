@@ -1,6 +1,6 @@
 import { Box, Flex, VStack, Button, FlexProps } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
-import { FaSignOutAlt, FaTachometerAlt, FaTags } from 'react-icons/fa';
+import { FaSignOutAlt, FaTachometerAlt, FaTags, FaLayerGroup } from 'react-icons/fa';
 import Image from 'next/image';
 
 export default function Layout({ children, ...props }: { children: React.ReactNode } & FlexProps) {
@@ -9,6 +9,7 @@ export default function Layout({ children, ...props }: { children: React.ReactNo
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: <FaTachometerAlt fontSize="1.25rem" /> },
     { name: 'Releases', path: '/releases', icon: <FaTags fontSize="1.25rem" /> },
+    { name: 'Update groups', path: '/update-groups', icon: <FaLayerGroup fontSize="1.25rem" /> },
   ];
 
   const handleLogout = () => {
@@ -25,7 +26,8 @@ export default function Layout({ children, ...props }: { children: React.ReactNo
         display="flex"
         alignItems="center"
         justifyContent="center"
-        position="relative">
+        position="relative"
+      >
         <Box>
           <Image
             src="/xavia_logo.png"
@@ -43,7 +45,8 @@ export default function Layout({ children, ...props }: { children: React.ReactNo
           className="h-full border-r-gray-200 border-r-2"
           display="flex"
           flexDirection="column"
-          justifyContent="space-between">
+          justifyContent="space-between"
+        >
           <VStack spacing={4} align="stretch">
             {navItems.map((item) => (
               <Button
@@ -52,7 +55,8 @@ export default function Layout({ children, ...props }: { children: React.ReactNo
                 colorScheme={router.pathname === item.path ? 'primary' : 'gray'}
                 rightIcon={item.icon}
                 onClick={() => router.push(item.path)}
-                justifyContent="space-between">
+                justifyContent="space-between"
+              >
                 <Box flex="1" textAlign="left">
                   {item.name}
                 </Box>
@@ -63,7 +67,8 @@ export default function Layout({ children, ...props }: { children: React.ReactNo
             variant="outline"
             colorScheme="red"
             onClick={handleLogout}
-            rightIcon={<FaSignOutAlt />}>
+            rightIcon={<FaSignOutAlt />}
+          >
             Logout
           </Button>
         </Box>

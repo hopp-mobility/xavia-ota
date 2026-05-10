@@ -1,6 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-import { DatabaseInterface, Release, Tracking, TrackingMetrics } from './DatabaseInterface';
+import {
+  DatabaseInterface,
+  Release,
+  Tracking,
+  TrackingMetrics,
+  UpdateGroup,
+  UpdateGroupMember,
+} from './DatabaseInterface';
 import { Tables } from './DatabaseFactory';
 
 export class SupabaseDatabase implements DatabaseInterface {
@@ -37,6 +44,7 @@ export class SupabaseDatabase implements DatabaseInterface {
         commitHash: data.commit_hash,
         commitMessage: data.commit_message,
         updateId: data.update_id,
+        updateGroupId: data.update_group_id,
       };
     }
 
@@ -52,7 +60,17 @@ export class SupabaseDatabase implements DatabaseInterface {
 
     if (error) throw new Error(error.message);
 
-    return data || null;
+    if (!data) return null;
+    return {
+      id: data.id,
+      path: data.path,
+      runtimeVersion: data.runtime_version,
+      timestamp: data.timestamp,
+      commitHash: data.commit_hash,
+      commitMessage: data.commit_message,
+      updateId: data.update_id,
+      updateGroupId: data.update_group_id,
+    };
   }
 
   async getReleaseTrackingMetricsForAllReleases(): Promise<TrackingMetrics[]> {
@@ -119,7 +137,7 @@ export class SupabaseDatabase implements DatabaseInterface {
     ];
   }
 
-  async createRelease(release: Omit<Release, 'id'>): Promise<Release> {
+  async createRelease(release: Omit<Release, 'id' | 'updateGroupName'>): Promise<Release> {
     const { data, error } = await this.supabase
       .from(Tables.RELEASES)
       .insert({
@@ -129,12 +147,12 @@ export class SupabaseDatabase implements DatabaseInterface {
         commit_hash: release.commitHash,
         commit_message: release.commitMessage,
         update_id: release.updateId,
+        update_group_id: release.updateGroupId,
       })
       .select()
       .single();
-
     if (error) throw error;
-    return data;
+    return this.mapReleaseRow(data);
   }
 
   async getRelease(id: string): Promise<Release | null> {
@@ -153,24 +171,178 @@ export class SupabaseDatabase implements DatabaseInterface {
       timestamp: data.timestamp,
       commitHash: data.commit_hash,
       commitMessage: data.commit_message,
+      updateId: data.update_id,
+      updateGroupId: data.update_group_id,
     };
   }
 
   async listReleases(): Promise<Release[]> {
     const { data, error } = await this.supabase
       .from(Tables.RELEASES)
-      .select()
+      .select(`*, ${Tables.UPDATE_GROUPS}(name)`)
       .order('timestamp', { ascending: false });
-
     if (error) throw error;
-    return data.map((release) => ({
-      id: release.id,
-      path: release.path,
-      runtimeVersion: release.runtime_version,
-      timestamp: release.timestamp,
-      size: release.size,
-      commitHash: release.commit_hash,
-      commitMessage: release.commit_message,
+    return (data ?? []).map((r) => ({
+      id: r.id,
+      path: r.path,
+      runtimeVersion: r.runtime_version,
+      timestamp: r.timestamp,
+      commitHash: r.commit_hash,
+      commitMessage: r.commit_message,
+      updateId: r.update_id,
+      updateGroupId: r.update_group_id,
+      updateGroupName: r[Tables.UPDATE_GROUPS]?.name,
     }));
+  }
+
+  async listUpdateGroups(): Promise<UpdateGroup[]> {
+    const { data, error } = await this.supabase
+      .from(Tables.UPDATE_GROUPS)
+      .select()
+      .order('is_default', { ascending: false })
+      .order('name', { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((g) => ({
+      id: g.id,
+      name: g.name,
+      isDefault: g.is_default,
+      createdAt: g.created_at,
+    }));
+  }
+
+  async getUpdateGroup(id: string): Promise<UpdateGroup | null> {
+    const { data, error } = await this.supabase
+      .from(Tables.UPDATE_GROUPS)
+      .select()
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return { id: data.id, name: data.name, isDefault: data.is_default, createdAt: data.created_at };
+  }
+
+  async getUpdateGroupByName(name: string): Promise<UpdateGroup | null> {
+    const { data, error } = await this.supabase
+      .from(Tables.UPDATE_GROUPS)
+      .select()
+      .eq('name', name)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return { id: data.id, name: data.name, isDefault: data.is_default, createdAt: data.created_at };
+  }
+
+  async getDefaultUpdateGroup(): Promise<UpdateGroup> {
+    const { data, error } = await this.supabase
+      .from(Tables.UPDATE_GROUPS)
+      .select()
+      .eq('is_default', true)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error('No default update group configured');
+    return { id: data.id, name: data.name, isDefault: data.is_default, createdAt: data.created_at };
+  }
+
+  async createUpdateGroup(name: string): Promise<UpdateGroup> {
+    const { data, error } = await this.supabase
+      .from(Tables.UPDATE_GROUPS)
+      .insert({ name })
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: data.id, name: data.name, isDefault: data.is_default, createdAt: data.created_at };
+  }
+
+  async deleteUpdateGroup(id: string): Promise<void> {
+    const { error } = await this.supabase.from(Tables.UPDATE_GROUPS).delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }
+
+  async listGroupMembers(updateGroupId: string): Promise<UpdateGroupMember[]> {
+    const { data, error } = await this.supabase
+      .from(Tables.UPDATE_GROUP_MEMBERS)
+      .select()
+      .eq('update_group_id', updateGroupId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((m) => ({
+      updateGroupId: m.update_group_id,
+      userId: m.user_id,
+      label: m.label ?? undefined,
+      createdAt: m.created_at,
+    }));
+  }
+
+  async addUserToGroup(updateGroupId: string, userId: string, label?: string): Promise<void> {
+    const { error } = await this.supabase
+      .from(Tables.UPDATE_GROUP_MEMBERS)
+      .upsert(
+        { update_group_id: updateGroupId, user_id: userId, label: label ?? null },
+        { onConflict: 'update_group_id,user_id' }
+      );
+    if (error) throw new Error(error.message);
+  }
+
+  async removeUserFromGroup(updateGroupId: string, userId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from(Tables.UPDATE_GROUP_MEMBERS)
+      .delete()
+      .eq('update_group_id', updateGroupId)
+      .eq('user_id', userId);
+    if (error) throw new Error(error.message);
+  }
+
+  async getLatestReleaseForUser(
+    runtimeVersion: string,
+    userId: string | null
+  ): Promise<Release | null> {
+    if (userId) {
+      const { data: memberships, error: memErr } = await this.supabase
+        .from(Tables.UPDATE_GROUP_MEMBERS)
+        .select('update_group_id')
+        .eq('user_id', userId);
+      if (memErr) throw new Error(memErr.message);
+
+      const groupIds = (memberships ?? []).map(
+        (m: { update_group_id: string }) => m.update_group_id
+      );
+      if (groupIds.length > 0) {
+        const { data, error } = await this.supabase
+          .from(Tables.RELEASES)
+          .select()
+          .eq('runtime_version', runtimeVersion)
+          .in('update_group_id', groupIds)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (data) return this.mapReleaseRow(data);
+      }
+    }
+
+    const defaultGroup = await this.getDefaultUpdateGroup();
+    const { data, error } = await this.supabase
+      .from(Tables.RELEASES)
+      .select()
+      .eq('runtime_version', runtimeVersion)
+      .eq('update_group_id', defaultGroup.id)
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? this.mapReleaseRow(data) : null;
+  }
+
+  private mapReleaseRow(row: Record<string, unknown>): Release {
+    return {
+      id: row.id as string,
+      runtimeVersion: row.runtime_version as string,
+      path: row.path as string,
+      timestamp: row.timestamp as string,
+      commitHash: row.commit_hash as string,
+      commitMessage: row.commit_message as string,
+      updateId: row.update_id as string | undefined,
+      updateGroupId: row.update_group_id as string,
+    };
   }
 }

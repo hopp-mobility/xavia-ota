@@ -34,8 +34,20 @@ describe('Rollback API', () => {
       copyFile: jest.fn().mockResolvedValue(true),
     };
 
+    const createRelease = jest.fn().mockResolvedValue(true);
     const mockDatabase = {
-      createRelease: jest.fn().mockResolvedValue(true),
+      createRelease,
+      getReleaseByPath: jest.fn().mockResolvedValue({
+        id: 'r1',
+        path: 'updates/1.0.0/old.zip',
+        runtimeVersion: '1.0.0',
+        timestamp: 't',
+        commitHash: 'abc123',
+        commitMessage: '',
+        updateGroupId: 'g-default',
+      }),
+      getUpdateGroupByName: jest.fn(),
+      getDefaultUpdateGroup: jest.fn(),
     };
 
     (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
@@ -56,6 +68,77 @@ describe('Rollback API', () => {
     expect(res._getStatusCode()).toBe(200);
     expect(res._getData()).toMatchSnapshot();
     expect(mockStorage.copyFile).toHaveBeenCalled();
-    expect(mockDatabase.createRelease).toHaveBeenCalled();
+    expect(createRelease).toHaveBeenCalledWith(expect.objectContaining({ updateGroupId: 'g-default' }));
+  });
+
+  it('inherits the source release group when no override is provided', async () => {
+    const mockStorage = { copyFile: jest.fn().mockResolvedValue(undefined) };
+    const createRelease = jest.fn().mockResolvedValue({});
+    const mockDatabase = {
+      getReleaseByPath: jest.fn().mockResolvedValue({
+        id: 'r1',
+        path: 'updates/1.0.0/old.zip',
+        runtimeVersion: '1.0.0',
+        timestamp: 't',
+        commitHash: 'h',
+        commitMessage: 'm',
+        updateGroupId: 'g-beta',
+      }),
+      getUpdateGroupByName: jest.fn(),
+      getDefaultUpdateGroup: jest.fn(),
+      createRelease,
+    };
+    (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
+
+    const { req, res } = createMocks({
+      method: 'POST',
+      body: {
+        path: 'updates/1.0.0/old.zip',
+        runtimeVersion: '1.0.0',
+        commitHash: 'h',
+        commitMessage: 'm',
+      },
+    });
+    await rollbackHandler(req, res);
+
+    expect(createRelease).toHaveBeenCalledWith(expect.objectContaining({ updateGroupId: 'g-beta' }));
+  });
+
+  it('honors the updateGroup override', async () => {
+    const mockStorage = { copyFile: jest.fn().mockResolvedValue(undefined) };
+    const createRelease = jest.fn().mockResolvedValue({});
+    const mockDatabase = {
+      getReleaseByPath: jest.fn().mockResolvedValue({
+        id: 'r1',
+        path: 'updates/1.0.0/old.zip',
+        runtimeVersion: '1.0.0',
+        timestamp: 't',
+        commitHash: 'h',
+        commitMessage: 'm',
+        updateGroupId: 'g-prod',
+      }),
+      getUpdateGroupByName: jest.fn().mockResolvedValue({
+        id: 'g-beta', name: 'beta', isDefault: false, createdAt: 't',
+      }),
+      createRelease,
+    };
+    (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
+
+    const { req, res } = createMocks({
+      method: 'POST',
+      body: {
+        path: 'updates/1.0.0/old.zip',
+        runtimeVersion: '1.0.0',
+        commitHash: 'h',
+        commitMessage: 'm',
+        updateGroup: 'beta',
+      },
+    });
+    await rollbackHandler(req, res);
+
+    expect(mockDatabase.getUpdateGroupByName).toHaveBeenCalledWith('beta');
+    expect(createRelease).toHaveBeenCalledWith(expect.objectContaining({ updateGroupId: 'g-beta' }));
   });
 });

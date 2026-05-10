@@ -5,6 +5,8 @@ import { SupabaseDatabase } from './SupabaseDatabase';
 export enum Tables {
   RELEASES = 'releases',
   RELEASES_TRACKING = 'releases_tracking',
+  UPDATE_GROUPS = 'update_groups',
+  UPDATE_GROUP_MEMBERS = 'update_group_members',
 }
 
 export class DatabaseFactory {
