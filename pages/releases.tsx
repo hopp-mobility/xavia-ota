@@ -21,11 +21,8 @@ import {
   Flex,
   Tooltip,
   Badge,
-  FormControl,
   FormLabel,
-  Input,
   Select,
-  VStack,
 } from '@chakra-ui/react';
 import moment from 'moment';
 import { useEffect, useRef, useState } from 'react';
@@ -54,66 +51,18 @@ export default function ReleasesPage() {
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  // Upload form state
-  const [uploadKey, setUploadKey] = useState('');
-  const [runtimeVersionInput, setRuntimeVersionInput] = useState('');
-  const [commitHashInput, setCommitHashInput] = useState('');
-  const [commitMessageInput, setCommitMessageInput] = useState('');
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  // Update groups state
   const [updateGroups, setUpdateGroups] = useState<
     { id: string; name: string; isDefault: boolean }[]
   >([]);
-  const [selectedGroupName, setSelectedGroupName] = useState<string>('');
-
-  // Filter state for release table
   const [filterGroupName, setFilterGroupName] = useState<string>(''); // '' = all groups
 
   useEffect(() => {
     fetchReleases();
     fetch('/api/update-groups')
       .then((r) => r.json())
-      .then((data) => {
-        const groups = data.groups ?? [];
-        setUpdateGroups(groups);
-        const def = groups.find((g: { isDefault: boolean }) => g.isDefault);
-        if (def) setSelectedGroupName(def.name);
-      })
+      .then((data) => setUpdateGroups(data.groups ?? []))
       .catch(() => setUpdateGroups([]));
   }, []);
-
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadFile) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('uploadKey', uploadKey);
-      formData.append('runtimeVersion', runtimeVersionInput);
-      formData.append('commitHash', commitHashInput);
-      formData.append('commitMessage', commitMessageInput);
-      formData.append('updateGroup', selectedGroupName);
-      formData.append('file', uploadFile);
-      const response = await fetch('/api/upload', { method: 'POST', body: formData });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Upload failed');
-      }
-      showToast('Upload successful', 'success');
-      setUploadKey('');
-      setRuntimeVersionInput('');
-      setCommitHashInput('');
-      setCommitMessageInput('');
-      setUploadFile(null);
-      fetchReleases();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Upload failed', 'error');
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const fetchReleases = async () => {
     try {
@@ -146,84 +95,6 @@ export default function ReleasesPage() {
                 icon={<SlRefresh />}
               />
             </HStack>
-
-            <Box
-              as="form"
-              onSubmit={handleUpload}
-              mt={6}
-              mb={8}
-              p={6}
-              borderWidth={1}
-              borderRadius="md"
-              maxW="lg">
-              <Heading size="sm" mb={4}>
-                Upload Release
-              </Heading>
-              <VStack spacing={3} align="stretch">
-                <FormControl isRequired>
-                  <FormLabel>Upload Key</FormLabel>
-                  <Input
-                    type="password"
-                    value={uploadKey}
-                    onChange={(e) => setUploadKey(e.target.value)}
-                    placeholder="Upload key"
-                  />
-                </FormControl>
-                <FormControl isRequired>
-                  <FormLabel>Runtime Version</FormLabel>
-                  <Input
-                    value={runtimeVersionInput}
-                    onChange={(e) => setRuntimeVersionInput(e.target.value)}
-                    placeholder="e.g. 1.0.0"
-                  />
-                </FormControl>
-                <FormControl isRequired>
-                  <FormLabel>Commit Hash</FormLabel>
-                  <Input
-                    value={commitHashInput}
-                    onChange={(e) => setCommitHashInput(e.target.value)}
-                    placeholder="e.g. abc1234"
-                  />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Commit Message</FormLabel>
-                  <Input
-                    value={commitMessageInput}
-                    onChange={(e) => setCommitMessageInput(e.target.value)}
-                    placeholder="Optional commit message"
-                  />
-                </FormControl>
-                <FormControl isRequired>
-                  <FormLabel>Update group</FormLabel>
-                  <Select
-                    value={selectedGroupName}
-                    onChange={(e) => setSelectedGroupName(e.target.value)}>
-                    {updateGroups.map((g) => (
-                      <option key={g.id} value={g.name}>
-                        {g.name}
-                        {g.isDefault ? ' (default)' : ''}
-                      </option>
-                    ))}
-                  </Select>
-                </FormControl>
-                <FormControl isRequired>
-                  <FormLabel>Bundle file</FormLabel>
-                  <Input
-                    type="file"
-                    accept=".zip,.tar,.gz"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                    p={1}
-                  />
-                </FormControl>
-                <Button
-                  type="submit"
-                  colorScheme="blue"
-                  isLoading={uploading}
-                  loadingText="Uploading...">
-                  Upload
-                </Button>
-              </VStack>
-            </Box>
 
             {loading && <Text>Loading...</Text>}
             {error && <Text color="red.500">{error}</Text>}
