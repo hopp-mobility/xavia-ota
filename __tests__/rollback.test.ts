@@ -3,6 +3,7 @@ import { createMocks } from 'node-mocks-http';
 import { DatabaseFactory } from '../apiUtils/database/DatabaseFactory';
 import { StorageFactory } from '../apiUtils/storage/StorageFactory';
 import rollbackHandler from '../pages/api/rollback';
+import { authedCookies } from './helpers/session';
 
 jest.mock('../apiUtils/database/DatabaseFactory');
 jest.mock('../apiUtils/storage/StorageFactory');
@@ -23,6 +24,7 @@ describe('Rollback API', () => {
     const { req, res } = createMocks({
       method: 'POST',
       body: {},
+      cookies: authedCookies(),
     });
     await rollbackHandler(req, res);
     expect(res._getStatusCode()).toBe(400);
@@ -62,6 +64,7 @@ describe('Rollback API', () => {
         runtimeVersion: '1.0.0',
         commitHash: 'abc123',
       },
+      cookies: authedCookies(),
     });
 
     await rollbackHandler(req, res);
@@ -99,6 +102,7 @@ describe('Rollback API', () => {
         commitHash: 'h',
         commitMessage: 'm',
       },
+      cookies: authedCookies(),
     });
     await rollbackHandler(req, res);
 
@@ -135,6 +139,7 @@ describe('Rollback API', () => {
         commitMessage: 'm',
         updateGroup: 'beta',
       },
+      cookies: authedCookies(),
     });
     await rollbackHandler(req, res);
 

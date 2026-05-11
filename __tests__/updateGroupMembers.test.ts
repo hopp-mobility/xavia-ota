@@ -2,6 +2,7 @@ import { createMocks } from 'node-mocks-http';
 
 import { DatabaseFactory } from '../apiUtils/database/DatabaseFactory';
 import membersHandler from '../pages/api/update-groups/[id]/members';
+import { authedCookies } from './helpers/session';
 
 jest.mock('../apiUtils/database/DatabaseFactory');
 
@@ -16,7 +17,7 @@ describe('Update group members API', () => {
     };
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
 
-    const { req, res } = createMocks({ method: 'GET', query: { id: 'g1' } });
+    const { req, res } = createMocks({ method: 'GET', query: { id: 'g1' }, cookies: authedCookies() });
     await membersHandler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
@@ -34,6 +35,7 @@ describe('Update group members API', () => {
       method: 'POST',
       query: { id: 'g1' },
       body: { userId: 'u42' },
+      cookies: authedCookies(),
     });
     await membersHandler(req, res);
 
@@ -52,6 +54,7 @@ describe('Update group members API', () => {
       method: 'POST',
       query: { id: 'g1' },
       body: { userId: 'u42', label: 'hannes@hopp.bike' },
+      cookies: authedCookies(),
     });
     await membersHandler(req, res);
 
@@ -64,7 +67,7 @@ describe('Update group members API', () => {
       getUpdateGroup: jest.fn().mockResolvedValue({ id: 'g1', name: 'beta', isDefault: false, createdAt: 't' }),
     };
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
-    const { req, res } = createMocks({ method: 'POST', query: { id: 'g1' }, body: {} });
+    const { req, res } = createMocks({ method: 'POST', query: { id: 'g1' }, body: {}, cookies: authedCookies() });
     await membersHandler(req, res);
     expect(res._getStatusCode()).toBe(400);
   });
@@ -74,7 +77,7 @@ describe('Update group members API', () => {
       getUpdateGroup: jest.fn().mockResolvedValue({ id: 'g1', name: 'production', isDefault: true, createdAt: 't' }),
     };
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
-    const { req, res } = createMocks({ method: 'POST', query: { id: 'g1' }, body: { userId: 'u1' } });
+    const { req, res } = createMocks({ method: 'POST', query: { id: 'g1' }, body: { userId: 'u1' }, cookies: authedCookies() });
     await membersHandler(req, res);
     expect(res._getStatusCode()).toBe(400);
   });
@@ -89,6 +92,7 @@ describe('Update group members API', () => {
     const { req, res } = createMocks({
       method: 'DELETE',
       query: { id: 'g1', userId: 'u42' },
+      cookies: authedCookies(),
     });
     await membersHandler(req, res);
 
@@ -99,7 +103,7 @@ describe('Update group members API', () => {
   it('returns 404 if group not found', async () => {
     const db = { getUpdateGroup: jest.fn().mockResolvedValue(null) };
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(db);
-    const { req, res } = createMocks({ method: 'GET', query: { id: 'nope' } });
+    const { req, res } = createMocks({ method: 'GET', query: { id: 'nope' }, cookies: authedCookies() });
     await membersHandler(req, res);
     expect(res._getStatusCode()).toBe(404);
   });

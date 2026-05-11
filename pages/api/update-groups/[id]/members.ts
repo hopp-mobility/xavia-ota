@@ -1,11 +1,13 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
+import { requireSession } from '../../../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../../../apiUtils/database/DatabaseFactory';
 import { getLogger } from '../../../../apiUtils/logger';
 
 const logger = getLogger('updateGroupMembers');
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!requireSession(req, res)) return;
   const { id } = req.query;
   if (typeof id !== 'string') {
     res.status(400).json({ error: 'Missing id' });

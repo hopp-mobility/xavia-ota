@@ -3,6 +3,7 @@ import fs from 'fs';
 import moment from 'moment';
 import { NextApiRequest, NextApiResponse } from 'next';
 
+import { verifySession } from '../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../apiUtils/database/DatabaseFactory';
 import { StorageFactory } from '../../apiUtils/storage/StorageFactory';
 
@@ -33,13 +34,16 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
     const commitMessage = fields.commitMessage?.[0] || 'No message provided';
     const updateGroupName = fields.updateGroup?.[0];
 
-    if (!uploadKey || !file || !runtimeVersion || !commitHash) {
-      res.status(400).json({ error: 'Missing upload key, file, runtime version or commit hash' });
+    if (!file || !runtimeVersion || !commitHash) {
+      res.status(400).json({ error: 'Missing file, runtime version or commit hash' });
       return;
     }
 
-    if (process.env.UPLOAD_KEY !== uploadKey) {
-      res.status(400).json({ error: 'Upload failed: wrong upload key' });
+    // Authorize: dashboard session OR matching UPLOAD_KEY (for CI/CD).
+    const sessionOk = verifySession(req);
+    const uploadKeyOk = !!uploadKey && process.env.UPLOAD_KEY === uploadKey;
+    if (!sessionOk && !uploadKeyOk) {
+      res.status(401).json({ error: 'Authentication required: provide a session or upload key' });
       return;
     }
 
