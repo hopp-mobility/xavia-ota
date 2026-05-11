@@ -58,11 +58,16 @@ uploadArgs=(-F "file=@${timestamp}.zip" -F "runtimeVersion=$runtimeVersion" -F "
 if [ -n "$updateGroup" ]; then
   uploadArgs+=(-F "updateGroup=$updateGroup")
 fi
-curl -X POST "$serverHost/api/upload" "${uploadArgs[@]}"
+response=$(curl -sS -X POST "$serverHost/api/upload" "${uploadArgs[@]}")
 
 echo ""
-
 echo "Uploaded to $serverHost/api/upload"
+echo "Response: $response"
+
+updateId=$(echo "$response" | jq -r '.updateId // empty')
+if [ -n "$updateId" ]; then
+  echo "Update ID: $updateId"
+fi
 cd "$projectRoot"
 
 # Remove the output folder and zip file

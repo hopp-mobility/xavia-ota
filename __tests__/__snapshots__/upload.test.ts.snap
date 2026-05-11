@@ -2,8 +2,10 @@
 
 exports[`Upload API should handle file upload successfully 1`] = `
 Object {
+  "commitHash": "abc123",
   "path": "updates/1.0.0/timestamp.zip",
   "success": true,
+  "updateId": "abcdef12-3456-7890-abcd-ef1234567890",
 }
 `;
 
