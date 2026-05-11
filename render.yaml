@@ -22,7 +22,7 @@ services:
     branch: main
     buildCommand: npm ci && npm run build
     startCommand: npm start
-    healthCheckPath: /api/manifest?platform=ios&runtime-version=health
+    healthCheckPath: /api/health
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
