@@ -10,6 +10,7 @@
 # After the first deploy, apply the schema once:
 #   psql <DATABASE_URL> -f containers/database/schema/releases.sql
 #   psql <DATABASE_URL> -f containers/database/schema/tracking.sql
+#   psql <DATABASE_URL> -f containers/database/schema/update_groups.sql
 # (or copy-paste into the Render Postgres web shell)
 
 services:
@@ -32,21 +33,37 @@ services:
       - key: HOST
         sync: false
 
-      # Storage backend. `local` works but Render's filesystem is ephemeral
-      # so uploaded bundles disappear on every deploy. Use `s3`, `gcs`, or
-      # `supabase` for anything you care about. Set the backend-specific
-      # credentials in the dashboard.
+      # Storage backend. Configured for Cloudflare R2 (S3-compatible).
+      # Set the credentials below in the Render dashboard.
       - key: BLOB_STORAGE_TYPE
+        value: s3
+      - key: S3_ACCESS_KEY_ID
         sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      # R2 endpoint, e.g. https://<account-id>.r2.cloudflarestorage.com
+      - key: S3_ENDPOINT
+        sync: false
+      # `auto` is correct for R2; only override for real S3.
+      - key: S3_REGION
+        value: auto
 
       - key: DB_TYPE
         value: postgres
 
-      # Admin credentials.
+      # Admin login password. Set manually so you know what to type at /login.
       - key: ADMIN_PASSWORD
         sync: false
+      # Shared secret for CI/CD uploads. Render generates a strong random;
+      # copy it from the dashboard into your CI secrets store.
       - key: UPLOAD_KEY
-        sync: false
+        generateValue: true
+      # HMAC key for the admin session cookie. Rotating invalidates all
+      # current sessions; never needs to be human-readable.
+      - key: SESSION_SECRET
+        generateValue: true
 
       # Code-signing private key (base64). Optional — only required if your
       # Expo client sets expo-expect-signature.
