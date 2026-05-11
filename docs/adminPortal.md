@@ -29,13 +29,20 @@ The `/update-groups` page lets operators manage release distribution. Each relea
 
 ### Identifying the user
 
-Manifest requests must send the user identifier as a header:
+Manifest requests carry the user identifier inside Expo's standard `Expo-Extra-Params` header. On the client, set it once at app startup:
+
+```ts
+import * as Updates from 'expo-updates';
+await Updates.setExtraParamAsync('xavia-user-id', currentUserId);
+```
+
+The Expo client serializes this as an RFC 8941 dictionary on every manifest poll, for example:
 
 ```
-xavia-user-id: <user id from your primary product database>
+Expo-Extra-Params: xavia-user-id="abc123"
 ```
 
-The header is treated as opaque. Missing or empty header → resolver uses the default group only.
+The server parses the dictionary, extracts the `xavia-user-id` value, and treats it as an opaque string. Missing key, missing header, or a malformed dictionary → the resolver falls back to the default group.
 
 ### Uploading to a group
 

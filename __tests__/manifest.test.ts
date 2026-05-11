@@ -353,7 +353,7 @@ describe('Manifest API', () => {
     expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).toHaveBeenCalled();
   });
 
-  it('passes xavia-user-id to the resolver', async () => {
+  it('passes xavia-user-id (from Expo-Extra-Params) to the resolver', async () => {
     const mockRelease = {
       id: 'release-id',
       runtimeVersion: '1.0.0',
@@ -380,7 +380,7 @@ describe('Manifest API', () => {
         'expo-runtime-version': '1.0.0',
         'expo-protocol-version': '1',
         'expo-current-update-id': 'uid-1',
-        'xavia-user-id': 'user-42',
+        'expo-extra-params': 'xavia-user-id="user-42"',
       },
     });
 
@@ -389,7 +389,51 @@ describe('Manifest API', () => {
     expect(getLatestReleaseForUser).toHaveBeenCalledWith('1.0.0', 'user-42');
   });
 
-  it('treats missing xavia-user-id as anonymous (null userId)', async () => {
+  it('ignores unknown Expo-Extra-Params keys', async () => {
+    const getLatestReleaseForUser = jest.fn().mockResolvedValue(null);
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({ getLatestReleaseForUser });
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
+      .fn()
+      .mockRejectedValue(new NoUpdateAvailableError());
+
+    const { req, res } = createMocks({
+      method: 'GET',
+      headers: {
+        'expo-platform': 'ios',
+        'expo-runtime-version': '1.0.0',
+        'expo-protocol-version': '1',
+        'expo-extra-params': 'some-other-key="x", another="y"',
+      },
+    });
+
+    await manifestEndpoint(req, res);
+
+    expect(getLatestReleaseForUser).toHaveBeenCalledWith('1.0.0', null);
+  });
+
+  it('treats malformed Expo-Extra-Params as anonymous', async () => {
+    const getLatestReleaseForUser = jest.fn().mockResolvedValue(null);
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({ getLatestReleaseForUser });
+    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
+      .fn()
+      .mockRejectedValue(new NoUpdateAvailableError());
+
+    const { req, res } = createMocks({
+      method: 'GET',
+      headers: {
+        'expo-platform': 'ios',
+        'expo-runtime-version': '1.0.0',
+        'expo-protocol-version': '1',
+        'expo-extra-params': 'this is not a valid dictionary!!!',
+      },
+    });
+
+    await manifestEndpoint(req, res);
+
+    expect(getLatestReleaseForUser).toHaveBeenCalledWith('1.0.0', null);
+  });
+
+  it('treats missing Expo-Extra-Params as anonymous (null userId)', async () => {
     const getLatestReleaseForUser = jest.fn().mockResolvedValue(null);
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
       getLatestReleaseForUser,

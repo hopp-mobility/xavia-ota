@@ -1,7 +1,7 @@
 import FormData from 'form-data';
 
 import { NextApiRequest, NextApiResponse } from 'next';
-import { serializeDictionary } from 'structured-headers';
+import { parseDictionary, serializeDictionary } from 'structured-headers';
 
 import { ConfigHelper } from '../../apiUtils/helpers/ConfigHelper';
 import { DictionaryHelper } from '../../apiUtils/helpers/DictionaryHelper';
@@ -14,6 +14,23 @@ import moment from 'moment';
 
 const logger = getLogger('manifest');
 
+// Expo-Extra-Params is an RFC 8941 structured-headers dictionary with string
+// values, e.g. `xavia-user-id="abc123", another-key="x"`. Set on the client
+// via `Updates.setExtraParamAsync(key, value)`.
+function extractExtraParam(req: NextApiRequest, key: string): string | null {
+  const header = req.headers['expo-extra-params'];
+  if (typeof header !== 'string' || header.length === 0) return null;
+  try {
+    const entry = parseDictionary(header).get(key);
+    if (!entry) return null;
+    const [bareItem] = entry;
+    return typeof bareItem === 'string' && bareItem.length > 0 ? bareItem : null;
+  } catch (error) {
+    logger.warn('Failed to parse Expo-Extra-Params', { error });
+    return null;
+  }
+}
+
 export default async function manifestEndpoint(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
     res.statusCode = 405;
@@ -21,10 +38,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     return;
   }
 
-  const userId =
-    typeof req.headers['xavia-user-id'] === 'string' && req.headers['xavia-user-id']
-      ? (req.headers['xavia-user-id'] as string)
-      : null;
+  const userId = extractExtraParam(req, 'xavia-user-id');
 
   logger.info('A client requested a release', {
     runtimeVersion: req.headers['expo-runtime-version'],
