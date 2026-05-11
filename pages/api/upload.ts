@@ -82,7 +82,7 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
       updateGroupId: updateGroup.id,
     });
 
-    res.status(200).json({ success: true, path });
+    res.status(200).json({ success: true, path, updateId, commitHash });
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ error: 'Upload failed' });
