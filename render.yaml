@@ -1,0 +1,101 @@
+# Render Blueprint for xavia-ota.
+# https://render.com/docs/blueprint-spec
+#
+# Provisions a Next.js web service and a managed Postgres database.
+# Database connection details are wired into the web service's env vars
+# automatically via `fromDatabase`. Secrets and storage credentials are
+# marked `sync: false` so Render holds the values out of git — set them
+# in the Render dashboard after the first apply.
+#
+# After the first deploy, apply the schema once:
+#   psql <DATABASE_URL> -f containers/database/schema/releases.sql
+#   psql <DATABASE_URL> -f containers/database/schema/tracking.sql
+#   psql <DATABASE_URL> -f containers/database/schema/update_groups.sql
+# (or copy-paste into the Render Postgres web shell)
+
+services:
+  - type: web
+    name: xavia-ota
+    runtime: node
+    region: frankfurt
+    plan: starter
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/manifest?platform=ios&runtime-version=health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: '20'
+
+      # App config — set HOST after the service is provisioned so the
+      # manifest can hand clients absolute asset URLs that point back here.
+      - key: HOST
+        sync: false
+
+      # Storage backend. Configured for Cloudflare R2 (S3-compatible).
+      # Set the credentials below in the Render dashboard.
+      - key: BLOB_STORAGE_TYPE
+        value: s3
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      # R2 endpoint, e.g. https://<account-id>.r2.cloudflarestorage.com
+      - key: S3_ENDPOINT
+        sync: false
+      # `auto` is correct for R2; only override for real S3.
+      - key: S3_REGION
+        value: auto
+
+      - key: DB_TYPE
+        value: postgres
+
+      # Admin login password. Set manually so you know what to type at /login.
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Shared secret for CI/CD uploads. Render generates a strong random;
+      # copy it from the dashboard into your CI secrets store.
+      - key: UPLOAD_KEY
+        generateValue: true
+      # HMAC key for the admin session cookie. Rotating invalidates all
+      # current sessions; never needs to be human-readable.
+      - key: SESSION_SECRET
+        generateValue: true
+
+      # Code-signing private key (base64). Optional — only required if your
+      # Expo client sets expo-expect-signature.
+      - key: PRIVATE_KEY_BASE_64
+        sync: false
+
+      # Postgres connection. Wired from the managed database below.
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: xavia-ota-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: xavia-ota-db
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: xavia-ota-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: xavia-ota-db
+          property: password
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: xavia-ota-db
+          property: database
+
+databases:
+  - name: xavia-ota-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: releases_db
+    user: xavia_ota
+    postgresMajorVersion: '18'
