@@ -98,4 +98,4 @@ databases:
     region: frankfurt
     databaseName: releases_db
     user: xavia_ota
-    postgresMajorVersion: '16'
+    postgresMajorVersion: '18'
