@@ -8,7 +8,10 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { DatabaseFactory } from '../../apiUtils/database/DatabaseFactory';
 import { HashHelper } from '../../apiUtils/helpers/HashHelper';
 import { ZipHelper } from '../../apiUtils/helpers/ZipHelper';
+import { getLogger } from '../../apiUtils/logger';
 import { buildManifestData } from '../../apiUtils/upload/buildManifestData';
+
+const logger = getLogger('upload');
 
 export const config = {
   api: {
@@ -98,7 +101,7 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
 
     res.status(200).json({ success: true, path, updateId, commitHash, releaseId });
   } catch (error) {
-    console.error('Upload error:', error);
+    logger.error('Upload error', { error });
     res.status(500).json({ error: 'Upload failed' });
   }
 }
