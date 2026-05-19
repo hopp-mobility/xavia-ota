@@ -5,7 +5,6 @@ import fs from 'fs';
 import moment from 'moment';
 import { NextApiRequest, NextApiResponse } from 'next';
 
-import { verifySession } from '../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../apiUtils/database/DatabaseFactory';
 import { HashHelper } from '../../apiUtils/helpers/HashHelper';
 import { ZipHelper } from '../../apiUtils/helpers/ZipHelper';
@@ -39,11 +38,12 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
       return;
     }
 
-    // Authorize: dashboard session OR matching UPLOAD_KEY (for CI/CD).
-    const sessionOk = verifySession(req);
-    const uploadKeyOk = !!uploadKey && process.env.UPLOAD_KEY === uploadKey;
-    if (!sessionOk && !uploadKeyOk) {
-      res.status(401).json({ error: 'Authentication required: provide a session or upload key' });
+    // Authorize: matching UPLOAD_KEY only. Session cookies (dashboard
+    // login) are deliberately not honored here — uploads are a
+    // CI/automation surface, and accepting a logged-in browser session
+    // would widen the blast radius of a stolen cookie.
+    if (!uploadKey || process.env.UPLOAD_KEY !== uploadKey) {
+      res.status(401).json({ error: 'Authentication required: provide a valid upload key' });
       return;
     }
 

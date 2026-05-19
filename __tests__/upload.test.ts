@@ -210,16 +210,21 @@ describe('Upload API', () => {
     expect(res._getStatusCode()).toBe(401);
   });
 
-  it('accepts a valid session cookie as an alternative to UPLOAD_KEY', async () => {
-    // No uploadKey field; auth comes from the cookie.
+  it('rejects requests with a session cookie but no UPLOAD_KEY', async () => {
+    // Session cookies are intentionally not accepted here — uploads
+    // require the shared UPLOAD_KEY regardless of dashboard login state.
     arrange({ fields: { uploadKey: undefined } });
-    const { createRelease } = mockDefaultGroupDatabase();
+    const createRelease = jest.fn();
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
+      getDefaultUpdateGroup: jest.fn(),
+      createRelease,
+    });
 
     const { req, res } = createMocks({ method: 'POST', cookies: authedCookies() });
     await uploadHandler(req, res);
 
-    expect(res._getStatusCode()).toBe(200);
-    expect(createRelease).toHaveBeenCalled();
+    expect(res._getStatusCode()).toBe(401);
+    expect(createRelease).not.toHaveBeenCalled();
   });
 
   it('processes both ios and android when both are present in metadata.json', async () => {
