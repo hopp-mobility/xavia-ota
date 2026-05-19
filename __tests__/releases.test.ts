@@ -1,23 +1,20 @@
 import { createMocks } from 'node-mocks-http';
 
 import { DatabaseFactory } from '../apiUtils/database/DatabaseFactory';
-import { StorageFactory } from '../apiUtils/storage/StorageFactory';
 import releasesHandler from '../pages/api/releases';
 import { authedCookies } from './helpers/session';
 
 jest.mock('../apiUtils/database/DatabaseFactory');
-jest.mock('../apiUtils/storage/StorageFactory');
 
 describe('Releases API', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should return 405 for non-GET requests', async () => {
+  it('returns 405 for non-GET requests', async () => {
     const { req, res } = createMocks({ method: 'POST' });
     await releasesHandler(req, res);
     expect(res._getStatusCode()).toBe(405);
-    expect(JSON.parse(res._getData())).toMatchSnapshot();
   });
 
   it('returns 401 without a valid session cookie', async () => {
@@ -26,83 +23,48 @@ describe('Releases API', () => {
     expect(res._getStatusCode()).toBe(401);
   });
 
-  it('should return releases successfully', async () => {
-    const mockStorage = {
-      listDirectories: jest.fn().mockResolvedValue(['1.0.0']),
-      listFiles: jest.fn().mockResolvedValue([
-        {
-          name: 'update.zip',
-          created_at: '2024-03-20T00:00:00Z',
-          metadata: { size: 1000 },
-        },
-      ]),
-    };
-
-    const mockDatabase = {
-      listReleases: jest.fn().mockResolvedValue([
-        {
-          path: 'updates/1.0.0/update.zip',
-          commitHash: 'abc123',
-        },
-      ]),
-    };
-
-    (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
-    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
-
-    const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
-    await releasesHandler(req, res);
-
-    expect(res._getStatusCode()).toBe(200);
-    expect(JSON.parse(res._getData())).toMatchSnapshot();
-  });
-
-  it('should handle errors gracefully', async () => {
-    const mockStorage = {
-      listDirectories: jest.fn().mockRejectedValue(new Error('Storage error')),
-    };
-
-    (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
-
-    const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
-    await releasesHandler(req, res);
-
-    expect(res._getStatusCode()).toBe(500);
-    expect(JSON.parse(res._getData())).toMatchSnapshot();
-  });
-
-  it('includes update group fields on each release', async () => {
-    const mockStorage = {
-      listDirectories: jest.fn().mockResolvedValue(['1.0.0']),
-      listFiles: jest.fn().mockResolvedValue([
-        { name: 'a.zip', created_at: 't', metadata: { size: 1 } },
-      ]),
-    };
-    const mockDatabase = {
+  it('returns releases from the database', async () => {
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
       listReleases: jest.fn().mockResolvedValue([
         {
           id: 'r1',
-          path: 'updates/1.0.0/a.zip',
+          path: 'releases/r1',
           runtimeVersion: '1.0.0',
-          timestamp: 't',
-          commitHash: 'h',
-          commitMessage: 'm',
+          timestamp: '2024-03-20T00:00:00Z',
+          commitHash: 'abc123',
+          commitMessage: 'first',
           updateGroupId: 'g-beta',
           updateGroupName: 'beta',
         },
       ]),
-    };
-    (StorageFactory.getStorage as jest.Mock).mockReturnValue(mockStorage);
-    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
+    });
 
     const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
     await releasesHandler(req, res);
 
     expect(res._getStatusCode()).toBe(200);
     const { releases } = JSON.parse(res._getData());
-    expect(releases[0]).toEqual(expect.objectContaining({
-      updateGroupId: 'g-beta',
-      updateGroupName: 'beta',
-    }));
+    expect(releases).toEqual([
+      {
+        path: 'releases/r1',
+        runtimeVersion: '1.0.0',
+        timestamp: '2024-03-20T00:00:00Z',
+        commitHash: 'abc123',
+        commitMessage: 'first',
+        updateGroupId: 'g-beta',
+        updateGroupName: 'beta',
+      },
+    ]);
+  });
+
+  it('returns 500 when the DB call fails', async () => {
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
+      listReleases: jest.fn().mockRejectedValue(new Error('boom')),
+    });
+
+    const { req, res } = createMocks({ method: 'GET', cookies: authedCookies() });
+    await releasesHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(500);
   });
 });

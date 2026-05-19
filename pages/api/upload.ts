@@ -1,3 +1,5 @@
+import AdmZip from 'adm-zip';
+import crypto from 'crypto';
 import formidable from 'formidable';
 import fs from 'fs';
 import moment from 'moment';
@@ -5,11 +7,9 @@ import { NextApiRequest, NextApiResponse } from 'next';
 
 import { verifySession } from '../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../apiUtils/database/DatabaseFactory';
-import { StorageFactory } from '../../apiUtils/storage/StorageFactory';
-
-import AdmZip from 'adm-zip';
-import { ZipHelper } from '../../apiUtils/helpers/ZipHelper';
 import { HashHelper } from '../../apiUtils/helpers/HashHelper';
+import { ZipHelper } from '../../apiUtils/helpers/ZipHelper';
+import { buildManifestData } from '../../apiUtils/upload/buildManifestData';
 
 export const config = {
   api: {
@@ -59,30 +59,44 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
       updateGroup = await database.getDefaultUpdateGroup();
     }
 
-    const storage = StorageFactory.getStorage();
-    const timestamp = moment().utc().format('YYYYMMDDHHmmss');
-    const updatePath = `updates/${runtimeVersion}`;
-
-    const zipContent = fs.readFileSync(file.filepath);
     const zipFolder = new AdmZip(file.filepath);
     const metadataJsonFile = await ZipHelper.getFileFromZip(zipFolder, 'metadata.json');
+    const metadataJson = JSON.parse(metadataJsonFile.toString('utf-8'));
 
     const updateHash = HashHelper.createHash(metadataJsonFile, 'sha256', 'hex');
     const updateId = HashHelper.convertSHA256HashToUUID(updateHash);
 
-    const path = await storage.uploadFile(`${updatePath}/${timestamp}.zip`, zipContent);
+    let expoConfig: unknown = {};
+    try {
+      const expoConfigFile = await ZipHelper.getFileFromZip(zipFolder, 'expoconfig.json');
+      expoConfig = JSON.parse(expoConfigFile.toString('utf-8'));
+    } catch {
+      // No expo config in the zip — fine, leave as empty object.
+    }
+
+    const releaseId = crypto.randomUUID();
+    const manifestData = await buildManifestData(zipFolder, metadataJson, expoConfig, releaseId);
+
+    // `path` is a logical identifier for legacy callers (rollback's by-path
+    // lookup, releases-list rows). No zip blob lives at this key; assets are
+    // under `releases/<id>/<platform>/...`.
+    const path = `releases/${releaseId}`;
 
     await database.createRelease({
-      path,
+      id: releaseId,
       runtimeVersion,
+      path,
       timestamp: moment().utc().toString(),
       commitHash,
       commitMessage,
       updateId,
       updateGroupId: updateGroup.id,
+      manifestData,
     });
 
-    res.status(200).json({ success: true, path, updateId, commitHash });
+    fs.unlinkSync(file.filepath);
+
+    res.status(200).json({ success: true, path, updateId, commitHash, releaseId });
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ error: 'Upload failed' });

@@ -61,16 +61,7 @@ export class SupabaseDatabase implements DatabaseInterface {
     if (error) throw new Error(error.message);
 
     if (!data) return null;
-    return {
-      id: data.id,
-      path: data.path,
-      runtimeVersion: data.runtime_version,
-      timestamp: data.timestamp,
-      commitHash: data.commit_hash,
-      commitMessage: data.commit_message,
-      updateId: data.update_id,
-      updateGroupId: data.update_group_id,
-    };
+    return this.mapReleaseRow(data);
   }
 
   async getReleaseTrackingMetricsForAllReleases(): Promise<TrackingMetrics[]> {
@@ -137,10 +128,13 @@ export class SupabaseDatabase implements DatabaseInterface {
     ];
   }
 
-  async createRelease(release: Omit<Release, 'id' | 'updateGroupName'>): Promise<Release> {
+  async createRelease(
+    release: Omit<Release, 'updateGroupName'> & { id?: string }
+  ): Promise<Release> {
     const { data, error } = await this.supabase
       .from(Tables.RELEASES)
       .insert({
+        ...(release.id ? { id: release.id } : {}),
         path: release.path,
         runtime_version: release.runtimeVersion,
         timestamp: release.timestamp,
@@ -148,6 +142,7 @@ export class SupabaseDatabase implements DatabaseInterface {
         commit_message: release.commitMessage,
         update_id: release.updateId,
         update_group_id: release.updateGroupId,
+        manifest_data: release.manifestData ?? null,
       })
       .select()
       .single();
@@ -164,16 +159,7 @@ export class SupabaseDatabase implements DatabaseInterface {
 
     if (error) throw error;
 
-    return {
-      id: data.id,
-      path: data.path,
-      runtimeVersion: data.runtime_version,
-      timestamp: data.timestamp,
-      commitHash: data.commit_hash,
-      commitMessage: data.commit_message,
-      updateId: data.update_id,
-      updateGroupId: data.update_group_id,
-    };
+    return data ? this.mapReleaseRow(data) : null;
   }
 
   async listReleases(): Promise<Release[]> {
@@ -183,14 +169,7 @@ export class SupabaseDatabase implements DatabaseInterface {
       .order('timestamp', { ascending: false });
     if (error) throw error;
     return (data ?? []).map((r) => ({
-      id: r.id,
-      path: r.path,
-      runtimeVersion: r.runtime_version,
-      timestamp: r.timestamp,
-      commitHash: r.commit_hash,
-      commitMessage: r.commit_message,
-      updateId: r.update_id,
-      updateGroupId: r.update_group_id,
+      ...this.mapReleaseRow(r),
       updateGroupName: r[Tables.UPDATE_GROUPS]?.name,
     }));
   }
@@ -343,6 +322,7 @@ export class SupabaseDatabase implements DatabaseInterface {
       commitMessage: row.commit_message as string,
       updateId: row.update_id as string | undefined,
       updateGroupId: row.update_group_id as string,
+      manifestData: (row.manifest_data ?? undefined) as Release['manifestData'],
     };
   }
 }

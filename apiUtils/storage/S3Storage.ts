@@ -6,7 +6,7 @@ import {
   PutObjectCommand,
   CopyObjectCommand,
 } from '@aws-sdk/client-s3';
-import { StorageInterface } from './StorageInterface';
+import { StorageInterface, UploadOptions } from './StorageInterface';
 
 export class S3Storage implements StorageInterface {
   private client: S3Client;
@@ -112,11 +112,12 @@ export class S3Storage implements StorageInterface {
     );
   }
 
-  async uploadFile(path: string, file: Buffer): Promise<string> {
+  async uploadFile(path: string, file: Buffer, options?: UploadOptions): Promise<string> {
     const uploadCommand = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: path,
       Body: file,
+      ContentType: options?.contentType,
     });
     await this.client.send(uploadCommand);
     return path;

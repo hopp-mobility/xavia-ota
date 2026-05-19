@@ -7,3 +7,6 @@ CREATE TABLE IF NOT EXISTS releases (
   commit_message VARCHAR(255) NOT NULL,
   update_id VARCHAR(255)
 );
+
+ALTER TABLE releases
+  ADD COLUMN IF NOT EXISTS manifest_data JSONB;

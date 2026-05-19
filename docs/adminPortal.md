@@ -27,6 +27,15 @@ The `/update-groups` page lets operators manage release distribution. Each relea
 - A single group is flagged as the **default** (typically `production`). Every user implicitly belongs to it; it cannot be deleted or renamed from the UI.
 - Other groups (e.g. `beta`, per-customer diagnostic groups) hold explicit memberships. Users in any non-default group receive the latest release from that group, regardless of how recently the default group has shipped. Default is the fall-through when the user's groups have no release for the runtime version, or when no user id is supplied.
 
+### Asset delivery
+
+Releases are unzipped at upload time and individual asset files are stored in R2 under `releases/<releaseId>/<platform>/<original-path>`. The manifest endpoint hands clients direct R2 URLs of the form `${ASSET_BASE_URL}/<storageKey>`; assets are served straight from R2 with no round-trip through the Render web service.
+
+**Requirements:**
+- The R2 bucket must allow public read access. Enable the `r2.dev` subdomain (Cloudflare R2 → Settings → Public Access → "Allow Access") or attach a custom domain.
+- Set `ASSET_BASE_URL` in the Render dashboard to that base URL (e.g. `https://pub-<hash>.r2.dev` or your CDN hostname). No trailing slash.
+- Per-asset Content-Type is baked in at upload time, so R2 serves correct types without any extra config.
+
 ### Identifying the user
 
 Manifest requests carry the user identifier inside Expo's standard `Expo-Extra-Params` header. On the client, set it once at app startup:

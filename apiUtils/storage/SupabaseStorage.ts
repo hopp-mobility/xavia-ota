@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-import { StorageInterface } from './StorageInterface';
+import { StorageInterface, UploadOptions } from './StorageInterface';
 
 export class SupabaseStorage implements StorageInterface {
   private supabase;
@@ -33,8 +33,10 @@ export class SupabaseStorage implements StorageInterface {
     return data.map((file) => file.name);
   }
 
-  async uploadFile(path: string, file: Buffer): Promise<string> {
-    const { error } = await this.supabase.storage.from(this.bucketName).upload(path, file);
+  async uploadFile(path: string, file: Buffer, options?: UploadOptions): Promise<string> {
+    const { error } = await this.supabase.storage
+      .from(this.bucketName)
+      .upload(path, file, options?.contentType ? { contentType: options.contentType } : undefined);
 
     if (error) throw error;
     return path;

@@ -1,5 +1,9 @@
+export interface UploadOptions {
+  contentType?: string;
+}
+
 export interface StorageInterface {
-  uploadFile(path: string, file: Buffer): Promise<string>;
+  uploadFile(path: string, file: Buffer, options?: UploadOptions): Promise<string>;
   downloadFile(path: string): Promise<Buffer>;
   fileExists(path: string): Promise<boolean>;
   listFiles(directory: string): Promise<
