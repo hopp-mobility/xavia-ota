@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import { StorageInterface } from './StorageInterface';
+import { StorageInterface, UploadOptions } from './StorageInterface';
 
 export class LocalStorage implements StorageInterface {
   private baseDir: string;
@@ -24,7 +24,7 @@ export class LocalStorage implements StorageInterface {
     await fs.mkdir(fullPath, { recursive: true });
   }
 
-  async uploadFile(filePath: string, content: Buffer): Promise<string> {
+  async uploadFile(filePath: string, content: Buffer, _options?: UploadOptions): Promise<string> {
     const fullPath = path.join(this.baseDir, filePath);
     await this.ensureDir(path.dirname(filePath));
     await fs.writeFile(fullPath, content);

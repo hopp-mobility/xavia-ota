@@ -1,3 +1,23 @@
+export interface AssetEntry {
+  filePath: string;
+  storageKey: string;
+  hash: string;
+  key: string;
+  fileExtension: string;
+  contentType: string;
+}
+
+export interface PlatformBundle {
+  assets: AssetEntry[];
+  launchAsset: AssetEntry;
+  expoConfig: unknown;
+}
+
+export interface ManifestData {
+  ios?: PlatformBundle;
+  android?: PlatformBundle;
+}
+
 export interface Release {
   id: string;
   runtimeVersion: string;
@@ -8,6 +28,7 @@ export interface Release {
   updateId?: string;
   updateGroupId: string;
   updateGroupName?: string;
+  manifestData?: ManifestData;
 }
 
 export interface Tracking {
@@ -37,7 +58,10 @@ export interface UpdateGroupMember {
 }
 
 export interface DatabaseInterface {
-  createRelease(release: Omit<Release, 'id' | 'updateGroupName'>): Promise<Release>;
+  // `id` is optional — when omitted, the database default (gen_random_uuid)
+  // assigns one. Pass an explicit id when callers need to reference it
+  // before the row exists (e.g. to derive storage keys at upload time).
+  createRelease(release: Omit<Release, 'updateGroupName'> & { id?: string }): Promise<Release>;
   getRelease(id: string): Promise<Release | null>;
   getReleaseByPath(path: string): Promise<Release | null>;
   listReleases(): Promise<Release[]>;

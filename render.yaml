@@ -33,6 +33,12 @@ services:
       - key: HOST
         sync: false
 
+      # Public base URL for R2 assets, e.g. https://pub-<hash>.r2.dev or a
+      # custom CDN domain. The bucket must be configured for public read
+      # access (Cloudflare R2 → Settings → Public Access).
+      - key: ASSET_BASE_URL
+        sync: false
+
       # Storage backend. Configured for Cloudflare R2 (S3-compatible).
       # Set the credentials below in the Render dashboard.
       - key: BLOB_STORAGE_TYPE

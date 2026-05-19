@@ -1,10 +1,17 @@
+import crypto from 'crypto';
 import moment from 'moment';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 import { requireSession } from '../../apiUtils/auth/session';
 import { DatabaseFactory } from '../../apiUtils/database/DatabaseFactory';
-import { StorageFactory } from '../../apiUtils/storage/StorageFactory';
+import { getLogger } from '../../apiUtils/logger';
 
+const logger = getLogger('rollback');
+
+// Rollback = "republish an older release". We create a new row whose
+// `manifest_data` is copied from the source release, so it references the
+// same R2 storage keys. No file copies — the assets the clients downloaded
+// for the source are reused as-is for the new row.
 export default async function rollbackHandler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -13,14 +20,14 @@ export default async function rollbackHandler(req: NextApiRequest, res: NextApiR
   if (!requireSession(req, res)) return;
 
   const {
-    path,
+    path: sourcePath,
     runtimeVersion,
     commitHash,
     commitMessage,
     updateGroup: overrideGroupName,
   } = req.body;
 
-  if (!path) {
+  if (!sourcePath) {
     res.status(400).json({ error: 'Missing path' });
     return;
   }
@@ -35,7 +42,12 @@ export default async function rollbackHandler(req: NextApiRequest, res: NextApiR
 
   try {
     const database = DatabaseFactory.getDatabase();
-    const storage = StorageFactory.getStorage();
+
+    const sourceRelease = await database.getReleaseByPath(sourcePath);
+    if (!sourceRelease) {
+      res.status(404).json({ error: 'Source release not found' });
+      return;
+    }
 
     let updateGroupId: string;
     if (overrideGroupName) {
@@ -46,32 +58,27 @@ export default async function rollbackHandler(req: NextApiRequest, res: NextApiR
       }
       updateGroupId = overrideGroup.id;
     } else {
-      const sourceRelease = await database.getReleaseByPath(path);
-      if (sourceRelease?.updateGroupId) {
-        updateGroupId = sourceRelease.updateGroupId;
-      } else {
-        const defaultGroup = await database.getDefaultUpdateGroup();
-        updateGroupId = defaultGroup.id;
-      }
+      updateGroupId = sourceRelease.updateGroupId;
     }
 
-    const timestamp = moment().utc().format('YYYYMMDDHHmmss');
-    const newPath = `updates/${runtimeVersion}/${timestamp}.zip`;
-
-    await storage.copyFile(path, newPath);
+    const newReleaseId = crypto.randomUUID();
+    const newPath = `releases/${newReleaseId}`;
 
     await database.createRelease({
+      id: newReleaseId,
       path: newPath,
       runtimeVersion,
       timestamp: moment().utc().toString(),
       commitHash,
       commitMessage,
+      updateId: sourceRelease.updateId,
       updateGroupId,
+      manifestData: sourceRelease.manifestData,
     });
 
-    res.status(200).json({ success: true, newPath });
+    res.status(200).json({ success: true, path: newPath, releaseId: newReleaseId });
   } catch (error) {
-    console.error('Rollback error:', error);
+    logger.error('Rollback error', { error });
     res.status(500).json({ error: 'Rollback failed' });
   }
 }

@@ -37,7 +37,8 @@ export class PostgresDatabase implements DatabaseInterface {
     const query = `
       SELECT id, runtime_version as "runtimeVersion", path, timestamp,
              commit_hash as "commitHash", commit_message as "commitMessage",
-             update_id as "updateId", update_group_id as "updateGroupId"
+             update_id as "updateId", update_group_id as "updateGroupId",
+             manifest_data as "manifestData"
       FROM ${Tables.RELEASES} WHERE path = $1
     `;
     const { rows } = await this.pool.query(query, [path]);
@@ -82,16 +83,20 @@ export class PostgresDatabase implements DatabaseInterface {
     }));
   }
 
-  async createRelease(release: Omit<Release, 'id' | 'updateGroupName'>): Promise<Release> {
-    const query = `
-      INSERT INTO ${Tables.RELEASES}
-        (runtime_version, path, timestamp, commit_hash, commit_message, update_id, update_group_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, runtime_version as "runtimeVersion", path, timestamp,
-                commit_hash as "commitHash", commit_message as "commitMessage",
-                update_id as "updateId", update_group_id as "updateGroupId"
-    `;
-    const values = [
+  async createRelease(
+    release: Omit<Release, 'updateGroupName'> & { id?: string }
+  ): Promise<Release> {
+    const columns = [
+      'runtime_version',
+      'path',
+      'timestamp',
+      'commit_hash',
+      'commit_message',
+      'update_id',
+      'update_group_id',
+      'manifest_data',
+    ];
+    const values: unknown[] = [
       release.runtimeVersion,
       release.path,
       release.timestamp,
@@ -99,7 +104,21 @@ export class PostgresDatabase implements DatabaseInterface {
       release.commitMessage,
       release.updateId,
       release.updateGroupId,
+      release.manifestData ?? null,
     ];
+    if (release.id) {
+      columns.unshift('id');
+      values.unshift(release.id);
+    }
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    const query = `
+      INSERT INTO ${Tables.RELEASES} (${columns.join(', ')})
+      VALUES (${placeholders})
+      RETURNING id, runtime_version as "runtimeVersion", path, timestamp,
+                commit_hash as "commitHash", commit_message as "commitMessage",
+                update_id as "updateId", update_group_id as "updateGroupId",
+                manifest_data as "manifestData"
+    `;
     const { rows } = await this.pool.query(query, values);
     return rows[0];
   }
@@ -108,7 +127,8 @@ export class PostgresDatabase implements DatabaseInterface {
     const query = `
       SELECT id, runtime_version as "runtimeVersion", path, timestamp,
              commit_hash as "commitHash", commit_message as "commitMessage",
-             update_id as "updateId", update_group_id as "updateGroupId"
+             update_id as "updateId", update_group_id as "updateGroupId",
+             manifest_data as "manifestData"
       FROM ${Tables.RELEASES} WHERE id = $1
     `;
 
@@ -121,6 +141,7 @@ export class PostgresDatabase implements DatabaseInterface {
       SELECT r.id, r.runtime_version as "runtimeVersion", r.path, r.timestamp,
              r.commit_hash as "commitHash", r.commit_message as "commitMessage",
              r.update_id as "updateId", r.update_group_id as "updateGroupId",
+             r.manifest_data as "manifestData",
              g.name as "updateGroupName"
       FROM ${Tables.RELEASES} r
       LEFT JOIN ${Tables.UPDATE_GROUPS} g ON r.update_group_id = g.id
@@ -218,7 +239,8 @@ export class PostgresDatabase implements DatabaseInterface {
     const query = `
       SELECT r.id, r.runtime_version as "runtimeVersion", r.path, r.timestamp,
              r.commit_hash as "commitHash", r.commit_message as "commitMessage",
-             r.update_id as "updateId", r.update_group_id as "updateGroupId"
+             r.update_id as "updateId", r.update_group_id as "updateGroupId",
+             r.manifest_data as "manifestData"
       FROM ${Tables.RELEASES} r
       JOIN ${Tables.UPDATE_GROUPS} g ON r.update_group_id = g.id
       LEFT JOIN ${Tables.UPDATE_GROUP_MEMBERS} m

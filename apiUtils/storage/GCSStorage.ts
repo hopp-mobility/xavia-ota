@@ -1,6 +1,6 @@
 import { Storage } from '@google-cloud/storage';
 
-import { StorageInterface } from './StorageInterface';
+import { StorageInterface, UploadOptions } from './StorageInterface';
 
 export class GCSStorage implements StorageInterface {
   private storage;
@@ -44,9 +44,9 @@ export class GCSStorage implements StorageInterface {
     return innerFolders.filter((value, index, array) => array.indexOf(value) === index);
   }
 
-  async uploadFile(path: string, file: Buffer): Promise<string> {
+  async uploadFile(path: string, file: Buffer, options?: UploadOptions): Promise<string> {
     const fileObject = this.storage.bucket(this.bucketName).file(path);
-    await fileObject.save(file);
+    await fileObject.save(file, options?.contentType ? { contentType: options.contentType } : {});
     console.log(`gs://${this.bucketName}/${path} uploaded`);
     return path;
   }
