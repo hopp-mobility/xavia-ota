@@ -2,11 +2,12 @@ import mime from 'mime';
 import { NextApiRequest, NextApiResponse } from 'next';
 import nullthrows from 'nullthrows';
 
+import { DatabaseFactory } from '../../apiUtils/database/DatabaseFactory';
 import { UpdateHelper } from '../../apiUtils/helpers/UpdateHelper';
 import { ZipHelper } from '../../apiUtils/helpers/ZipHelper';
 
 export default async function assetsEndpoint(req: NextApiRequest, res: NextApiResponse) {
-  const { asset: assetPath, runtimeVersion, platform } = req.query;
+  const { asset: assetPath, releaseId, runtimeVersion, platform } = req.query;
 
   if (!assetPath || typeof assetPath !== 'string') {
     res.statusCode = 400;
@@ -26,15 +27,31 @@ export default async function assetsEndpoint(req: NextApiRequest, res: NextApiRe
     return;
   }
 
+  if (!releaseId || typeof releaseId !== 'string') {
+    res.statusCode = 400;
+    res.json({ error: 'No releaseId provided.' });
+    return;
+  }
+
   try {
-    const updateBundlePath = await UpdateHelper.getLatestUpdateBundlePathForRuntimeVersionAsync(
-      runtimeVersion as string
-    );
+    const release = await DatabaseFactory.getDatabase().getRelease(releaseId);
+    if (!release) {
+      res.statusCode = 404;
+      res.json({ error: 'Release not found.' });
+      return;
+    }
+    if (release.runtimeVersion !== runtimeVersion) {
+      res.statusCode = 400;
+      res.json({ error: 'runtimeVersion does not match release.' });
+      return;
+    }
+
+    const updateBundlePath = release.path.replace(/\.zip$/, '');
     const zip = await ZipHelper.getZipFromStorage(updateBundlePath);
 
     const { metadataJson } = await UpdateHelper.getMetadataAsync({
       updateBundlePath,
-      runtimeVersion: runtimeVersion as string,
+      runtimeVersion,
     });
 
     const assetMetadata = metadataJson.fileMetadata[platform].assets.find(
@@ -42,7 +59,7 @@ export default async function assetsEndpoint(req: NextApiRequest, res: NextApiRe
     );
     const isLaunchAsset = metadataJson.fileMetadata[platform].bundle === assetPath;
 
-    const asset = await ZipHelper.getFileFromZip(zip, assetPath as string);
+    const asset = await ZipHelper.getFileFromZip(zip, assetPath);
 
     res.statusCode = 200;
     res.setHeader(

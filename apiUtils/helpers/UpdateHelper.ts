@@ -2,8 +2,6 @@ import mime from 'mime';
 
 import { HashHelper } from './HashHelper';
 import { ZipHelper } from './ZipHelper';
-import { StorageFactory } from '../storage/StorageFactory';
-import { DatabaseFactory } from '../database/DatabaseFactory';
 
 export class NoUpdateAvailableError extends Error {}
 export type GetAssetMetadataArg =
@@ -14,6 +12,7 @@ export type GetAssetMetadataArg =
       isLaunchAsset: true;
       runtimeVersion: string;
       platform: string;
+      releaseId: string;
     }
   | {
       updateBundlePath: string;
@@ -22,44 +21,10 @@ export type GetAssetMetadataArg =
       isLaunchAsset: false;
       runtimeVersion: string;
       platform: string;
+      releaseId: string;
     };
 
 export class UpdateHelper {
-  static async getResolvedUpdateBundlePathAsync(
-    runtimeVersion: string,
-    userId: string | null
-  ): Promise<string> {
-    const release = await DatabaseFactory.getDatabase().getLatestReleaseForUser(
-      runtimeVersion,
-      userId
-    );
-    if (!release) {
-      throw new NoUpdateAvailableError();
-    }
-    return release.path.replace(/\.zip$/, '');
-  }
-
-  static async getLatestUpdateBundlePathForRuntimeVersionAsync(
-    runtimeVersion: string
-  ): Promise<string> {
-    const storage = StorageFactory.getStorage();
-    const updatesDirectoryForRuntimeVersion = `updates/${runtimeVersion}`;
-
-    if (!(await storage.fileExists(updatesDirectoryForRuntimeVersion))) {
-      throw new NoUpdateAvailableError();
-    }
-
-    const zipFiles = (await storage.listFiles(updatesDirectoryForRuntimeVersion))
-      .filter((file) => file.name.endsWith('.zip'))
-      .sort((a, b) => parseInt(b.name.split('.')[0], 10) - parseInt(a.name.split('.')[0], 10));
-
-    if (!zipFiles.length) {
-      throw new Error(`No updates found for runtime version: ${runtimeVersion}`);
-    }
-
-    return `${updatesDirectoryForRuntimeVersion}/${zipFiles[0].name.replace('.zip', '')}`;
-  }
-
   static async getAssetMetadataAsync(arg: GetAssetMetadataArg) {
     const zip = await ZipHelper.getZipFromStorage(arg.updateBundlePath);
     const asset = await ZipHelper.getFileFromZip(zip, arg.filePath);
@@ -76,7 +41,7 @@ export class UpdateHelper {
       key,
       fileExtension: `.${keyExtensionSuffix}`,
       contentType,
-      url: `${process.env.HOST}/api/assets?asset=${arg.filePath}&runtimeVersion=${arg.runtimeVersion}&platform=${arg.platform}`,
+      url: `${process.env.HOST}/api/assets?asset=${arg.filePath}&releaseId=${arg.releaseId}&runtimeVersion=${arg.runtimeVersion}&platform=${arg.platform}`,
     };
   }
 
