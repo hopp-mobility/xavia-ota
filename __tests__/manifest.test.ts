@@ -3,7 +3,7 @@ import { createMocks } from 'node-mocks-http';
 import FormData from 'form-data';
 
 import { ConfigHelper } from '../apiUtils/helpers/ConfigHelper';
-import { UpdateHelper, NoUpdateAvailableError } from '../apiUtils/helpers/UpdateHelper';
+import { UpdateHelper } from '../apiUtils/helpers/UpdateHelper';
 import { ZipHelper } from '../apiUtils/helpers/ZipHelper';
 import { HashHelper } from '../apiUtils/helpers/HashHelper';
 import manifestEndpoint from '../pages/api/manifest';
@@ -55,7 +55,6 @@ describe('Manifest API', () => {
   });
 
   it('should return NoUpdateAvailable when user is already running the latest release', async () => {
-    // Mock database to return a release with matching updateId
     const mockRelease: Release = {
       id: 'release-id',
       runtimeVersion: '1.0.0',
@@ -73,13 +72,11 @@ describe('Manifest API', () => {
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
-    // Mock NoUpdateAvailable directive
     const mockNoUpdateDirective = { type: 'noUpdateAvailable' };
     (UpdateHelper.createNoUpdateAvailableDirectiveAsync as jest.Mock).mockResolvedValue(
       mockNoUpdateDirective
     );
 
-    // Mock FormData
     const mockFormData = {
       append: jest.fn(),
       getBoundary: jest.fn().mockReturnValue('boundary'),
@@ -108,10 +105,9 @@ describe('Manifest API', () => {
     );
   });
 
-  it('should handle normal update successfully', async () => {
-    // Mock database to return a release with different updateId
+  it('should handle normal update successfully and pass releaseId to asset metadata', async () => {
     const mockRelease: Release = {
-      id: 'release-id',
+      id: 'release-id-42',
       runtimeVersion: '1.0.0',
       path: 'path/to/update.zip',
       timestamp: '2024-03-20T00:00:00Z',
@@ -123,7 +119,6 @@ describe('Manifest API', () => {
 
     const mockDatabase = {
       getLatestReleaseForUser: jest.fn().mockResolvedValue(mockRelease),
-      getReleaseByPath: jest.fn().mockResolvedValue(mockRelease),
       createTracking: jest.fn().mockResolvedValue(undefined),
     } as unknown as DatabaseInterface;
 
@@ -142,14 +137,9 @@ describe('Manifest API', () => {
       id: 'test-id',
     };
 
-    // Mock UUID conversion
     const mockUUID = 'test-uuid';
     (HashHelper.convertSHA256HashToUUID as jest.Mock).mockReturnValue(mockUUID);
 
-    // Mock UpdateHelper methods
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockResolvedValue(
-      'path/to/update'
-    );
     (UpdateHelper.getMetadataAsync as jest.Mock).mockResolvedValue(mockMetadata);
     (UpdateHelper.getAssetMetadataAsync as jest.Mock).mockResolvedValue({
       hash: 'hash',
@@ -159,16 +149,13 @@ describe('Manifest API', () => {
       url: 'url',
     });
 
-    // Mock ConfigHelper
     (ConfigHelper.getExpoConfigAsync as jest.Mock).mockResolvedValue({});
 
-    // Mock ZipHelper
     const mockZip = {
       getEntry: jest.fn().mockReturnValue(null),
     };
     (ZipHelper.getZipFromStorage as jest.Mock).mockResolvedValue(mockZip as unknown as AdmZip);
 
-    // Mock FormData
     const mockFormData = {
       append: jest.fn(),
       getBoundary: jest.fn().mockReturnValue('boundary'),
@@ -182,14 +169,19 @@ describe('Manifest API', () => {
         'expo-platform': 'ios',
         'expo-runtime-version': '1.0.0',
         'expo-protocol-version': '1',
-        'expo-current-update-id': 'current-update-id', // Different from the release updateId
+        'expo-current-update-id': 'current-update-id',
       },
     });
 
     await manifestEndpoint(req, res);
 
     expect(res._getStatusCode()).toBe(200);
-    expect(mockDatabase.createTracking).toHaveBeenCalled();
+    expect(mockDatabase.createTracking).toHaveBeenCalledWith(
+      expect.objectContaining({ releaseId: 'release-id-42', platform: 'ios' })
+    );
+    expect(UpdateHelper.getAssetMetadataAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ releaseId: 'release-id-42', updateBundlePath: 'path/to/update' })
+    );
     expect(mockFormData.append).toHaveBeenCalledWith(
       'manifest',
       expect.any(String),
@@ -198,17 +190,22 @@ describe('Manifest API', () => {
   });
 
   it('should handle rollback update successfully', async () => {
-    // Mock database
+    const mockRelease: Release = {
+      id: 'release-id',
+      runtimeVersion: '1.0.0',
+      path: 'path/to/update.zip',
+      timestamp: '2024-03-20T00:00:00Z',
+      commitHash: 'abc',
+      commitMessage: 'msg',
+      updateId: 'uid-1',
+      updateGroupId: 'g-prod',
+    };
     const mockDatabase = {
-      getLatestReleaseForUser: jest.fn().mockResolvedValue(null),
+      getLatestReleaseForUser: jest.fn().mockResolvedValue(mockRelease),
     } as unknown as DatabaseInterface;
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
-    // Mock UpdateHelper methods
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockResolvedValue(
-      'path/to/update'
-    );
     (UpdateHelper.createRollBackDirectiveAsync as jest.Mock).mockResolvedValue({
       type: 'rollBackToEmbedded',
       parameters: {
@@ -216,13 +213,11 @@ describe('Manifest API', () => {
       },
     });
 
-    // Mock ZipHelper to indicate rollback
     const mockZip = {
-      getEntry: jest.fn().mockReturnValue({ name: 'rollback' }), // Return non-null to indicate rollback
+      getEntry: jest.fn().mockReturnValue({ name: 'rollback' }),
     };
     (ZipHelper.getZipFromStorage as jest.Mock).mockResolvedValue(mockZip as unknown as AdmZip);
 
-    // Mock FormData
     const mockFormData = {
       append: jest.fn(),
       getBoundary: jest.fn().mockReturnValue('boundary'),
@@ -253,17 +248,21 @@ describe('Manifest API', () => {
   });
 
   it('should return NoUpdateAvailable when current update matches latest', async () => {
-    // Mock database
+    const mockRelease: Release = {
+      id: 'release-id',
+      runtimeVersion: '1.0.0',
+      path: 'path/to/update.zip',
+      timestamp: '2024-03-20T00:00:00Z',
+      commitHash: 'abc',
+      commitMessage: 'msg',
+      updateId: 'uid-stored',
+      updateGroupId: 'g-prod',
+    };
     const mockDatabase = {
-      getLatestReleaseForUser: jest.fn().mockResolvedValue(null),
+      getLatestReleaseForUser: jest.fn().mockResolvedValue(mockRelease),
     } as unknown as DatabaseInterface;
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
-
-    // Mock UpdateHelper methods
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockResolvedValue(
-      'path/to/update'
-    );
 
     const mockMetadata = {
       metadataJson: { fileMetadata: { ios: {} } },
@@ -272,22 +271,19 @@ describe('Manifest API', () => {
     };
     (UpdateHelper.getMetadataAsync as jest.Mock).mockResolvedValue(mockMetadata);
 
-    // Mock UUID conversion to match current update ID
+    // Hash matches the request's expo-current-update-id → fall into NoUpdateAvailable
     (HashHelper.convertSHA256HashToUUID as jest.Mock).mockReturnValue('current-update-id');
 
-    // Mock NoUpdateAvailable directive
     const mockNoUpdateDirective = { type: 'noUpdateAvailable' };
     (UpdateHelper.createNoUpdateAvailableDirectiveAsync as jest.Mock).mockResolvedValue(
       mockNoUpdateDirective
     );
 
-    // Mock ZipHelper
     const mockZip = {
-      getEntry: jest.fn().mockReturnValue(null), // Not a rollback
+      getEntry: jest.fn().mockReturnValue(null),
     };
     (ZipHelper.getZipFromStorage as jest.Mock).mockResolvedValue(mockZip as unknown as AdmZip);
 
-    // Mock FormData
     const mockFormData = {
       append: jest.fn(),
       getBoundary: jest.fn().mockReturnValue('boundary'),
@@ -301,7 +297,7 @@ describe('Manifest API', () => {
         'expo-platform': 'ios',
         'expo-runtime-version': '1.0.0',
         'expo-protocol-version': '1',
-        'expo-current-update-id': 'current-update-id', // Will match the converted hash
+        'expo-current-update-id': 'current-update-id',
       },
     });
 
@@ -311,26 +307,18 @@ describe('Manifest API', () => {
     expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).toHaveBeenCalled();
   });
 
-  it('should handle NoUpdateAvailable error from UpdateHelper', async () => {
-    // Mock database
+  it('should return NoUpdateAvailable when resolver finds no release for the runtime version', async () => {
     const mockDatabase = {
       getLatestReleaseForUser: jest.fn().mockResolvedValue(null),
     } as unknown as DatabaseInterface;
 
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue(mockDatabase);
 
-    // Mock UpdateHelper to throw NoUpdateAvailableError
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock).mockRejectedValue(
-      new NoUpdateAvailableError()
-    );
-
-    // Mock NoUpdateAvailable directive
     const mockNoUpdateDirective = { type: 'noUpdateAvailable' };
     (UpdateHelper.createNoUpdateAvailableDirectiveAsync as jest.Mock).mockResolvedValue(
       mockNoUpdateDirective
     );
 
-    // Mock FormData
     const mockFormData = {
       append: jest.fn(),
       getBoundary: jest.fn().mockReturnValue('boundary'),
@@ -354,7 +342,7 @@ describe('Manifest API', () => {
   });
 
   it('passes xavia-user-id (from Expo-Extra-Params) to the resolver', async () => {
-    const mockRelease = {
+    const mockRelease: Release = {
       id: 'release-id',
       runtimeVersion: '1.0.0',
       path: 'updates/1.0.0/x.zip',
@@ -368,10 +356,6 @@ describe('Manifest API', () => {
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
       getLatestReleaseForUser,
     });
-
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
-      .fn()
-      .mockResolvedValue('updates/1.0.0/x');
 
     const { req, res } = createMocks({
       method: 'GET',
@@ -392,9 +376,6 @@ describe('Manifest API', () => {
   it('ignores unknown Expo-Extra-Params keys', async () => {
     const getLatestReleaseForUser = jest.fn().mockResolvedValue(null);
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({ getLatestReleaseForUser });
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
-      .fn()
-      .mockRejectedValue(new NoUpdateAvailableError());
 
     const { req, res } = createMocks({
       method: 'GET',
@@ -414,9 +395,6 @@ describe('Manifest API', () => {
   it('treats malformed Expo-Extra-Params as anonymous', async () => {
     const getLatestReleaseForUser = jest.fn().mockResolvedValue(null);
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({ getLatestReleaseForUser });
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
-      .fn()
-      .mockRejectedValue(new NoUpdateAvailableError());
 
     const { req, res } = createMocks({
       method: 'GET',
@@ -438,9 +416,6 @@ describe('Manifest API', () => {
     (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
       getLatestReleaseForUser,
     });
-    (UpdateHelper.getResolvedUpdateBundlePathAsync as jest.Mock) = jest
-      .fn()
-      .mockRejectedValue(new NoUpdateAvailableError());
 
     const { req, res } = createMocks({
       method: 'GET',
@@ -456,3 +431,4 @@ describe('Manifest API', () => {
     expect(getLatestReleaseForUser).toHaveBeenCalledWith('1.0.0', null);
   });
 });
+

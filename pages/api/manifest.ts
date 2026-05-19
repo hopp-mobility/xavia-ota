@@ -10,6 +10,7 @@ import { UpdateHelper, NoUpdateAvailableError } from '../../apiUtils/helpers/Upd
 import { ZipHelper } from '../../apiUtils/helpers/ZipHelper';
 import { getLogger } from '../../apiUtils/logger';
 import { DatabaseFactory } from '../../apiUtils/database/DatabaseFactory';
+import { Release } from '../../apiUtils/database/DatabaseInterface';
 import moment from 'moment';
 
 const logger = getLogger('manifest');
@@ -81,37 +82,28 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
   const database = DatabaseFactory.getDatabase();
   const releaseRecord = await database.getLatestReleaseForUser(runtimeVersion, userId);
 
-  if (releaseRecord) {
-    const updateId = releaseRecord.updateId;
-
-    const currentUpdateId = req.headers['expo-current-update-id'];
-    if (currentUpdateId === updateId) {
-      logger.info('User is already running the latest release. Returning NoUpdateAvailable.', {
-        runtimeVersion,
-        userId,
-      });
+  if (!releaseRecord) {
+    logger.info('No update available for runtime version', { runtimeVersion, userId });
+    try {
       await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
-      return;
+    } catch (error: any) {
+      res.statusCode = 404;
+      res.json({ error: error.message });
     }
-  }
-
-  let updateBundlePath: string;
-  try {
-    updateBundlePath = await UpdateHelper.getResolvedUpdateBundlePathAsync(runtimeVersion, userId);
-  } catch (error: any) {
-    if (error instanceof NoUpdateAvailableError) {
-      logger.info('No update available for runtime version', { runtimeVersion, userId });
-      await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
-      return;
-    }
-
-    res.statusCode = 404;
-    res.json({
-      error: error.message,
-    });
     return;
   }
 
+  const currentUpdateId = req.headers['expo-current-update-id'];
+  if (currentUpdateId && currentUpdateId === releaseRecord.updateId) {
+    logger.info('User is already running the latest release. Returning NoUpdateAvailable.', {
+      runtimeVersion,
+      userId,
+    });
+    await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
+    return;
+  }
+
+  const updateBundlePath = releaseRecord.path.replace(/\.zip$/, '');
   const updateType = await getTypeOfUpdateAsync(updateBundlePath);
 
   try {
@@ -121,6 +113,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
         await putUpdateInResponseAsync(
           req,
           res,
+          releaseRecord,
           updateBundlePath,
           runtimeVersion,
           platform,
@@ -159,6 +152,7 @@ async function getTypeOfUpdateAsync(updateBundlePath: string): Promise<UpdateTyp
 async function putUpdateInResponseAsync(
   req: NextApiRequest,
   res: NextApiResponse,
+  release: Release,
   updateBundlePath: string,
   runtimeVersion: string,
   platform: string,
@@ -195,6 +189,7 @@ async function putUpdateInResponseAsync(
           runtimeVersion,
           platform,
           isLaunchAsset: false,
+          releaseId: release.id,
         })
       )
     ),
@@ -205,6 +200,7 @@ async function putUpdateInResponseAsync(
       runtimeVersion,
       platform,
       ext: null,
+      releaseId: release.id,
     }),
     metadata: {},
     extra: {
@@ -259,17 +255,12 @@ async function putUpdateInResponseAsync(
   res.write(form.getBuffer());
   res.end();
 
-  const database = DatabaseFactory.getDatabase();
-  const release = await database.getReleaseByPath(updateBundlePath + '.zip');
-
-  if (release) {
-    logger.info(`Tracking download for release.`, { releaseId: release.id });
-    await database.createTracking({
-      platform,
-      releaseId: release.id,
-      downloadTimestamp: moment().utc().toISOString(),
-    });
-  }
+  logger.info(`Tracking download for release.`, { releaseId: release.id });
+  await DatabaseFactory.getDatabase().createTracking({
+    platform,
+    releaseId: release.id,
+    downloadTimestamp: moment().utc().toISOString(),
+  });
 }
 
 async function putRollBackInResponseAsync(
