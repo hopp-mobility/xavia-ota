@@ -8,6 +8,7 @@ import { StorageFactory } from '../apiUtils/storage/StorageFactory';
 import { ZipHelper } from '../apiUtils/helpers/ZipHelper';
 import { HashHelper } from '../apiUtils/helpers/HashHelper';
 import uploadHandler from '../pages/api/upload';
+import { authedCookies } from './helpers/session';
 
 jest.mock('../apiUtils/database/DatabaseFactory');
 jest.mock('../apiUtils/storage/StorageFactory');
@@ -30,9 +31,13 @@ const METADATA_JSON = {
 function arrange({
   fields,
   hasFile = true,
+  metadata = METADATA_JSON,
+  hasExpoConfig = true,
 }: {
   fields?: Record<string, string[] | undefined>;
   hasFile?: boolean;
+  metadata?: typeof METADATA_JSON;
+  hasExpoConfig?: boolean;
 } = {}) {
   const mockForm = {
     parse: jest.fn().mockResolvedValue([
@@ -52,8 +57,11 @@ function arrange({
 
   (ZipHelper.getFileFromZip as jest.Mock).mockImplementation(
     (_zip: unknown, filePath: string): Buffer => {
-      if (filePath === 'metadata.json') return Buffer.from(JSON.stringify(METADATA_JSON));
-      if (filePath === 'expoconfig.json') return Buffer.from(JSON.stringify({ name: 'app' }));
+      if (filePath === 'metadata.json') return Buffer.from(JSON.stringify(metadata));
+      if (filePath === 'expoconfig.json') {
+        if (!hasExpoConfig) throw new Error('not found');
+        return Buffer.from(JSON.stringify({ name: 'app' }));
+      }
       return Buffer.from(`${filePath}-bytes`);
     }
   );
@@ -65,9 +73,20 @@ function arrange({
   const uploadFile = jest.fn().mockImplementation((path: string) => Promise.resolve(path));
   (StorageFactory.getStorage as jest.Mock).mockReturnValue({ uploadFile });
 
-  jest.spyOn(fs, 'unlinkSync').mockImplementation(() => undefined);
+  const unlinkSync = jest.spyOn(fs, 'unlinkSync').mockImplementation(() => undefined);
 
-  return { uploadFile };
+  return { uploadFile, unlinkSync };
+}
+
+function mockDefaultGroupDatabase() {
+  const createRelease = jest.fn().mockResolvedValue({});
+  (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
+    getDefaultUpdateGroup: jest
+      .fn()
+      .mockResolvedValue({ id: 'g-prod', name: 'production', isDefault: true, createdAt: 't' }),
+    createRelease,
+  });
+  return { createRelease };
 }
 
 describe('Upload API', () => {
@@ -189,5 +208,146 @@ describe('Upload API', () => {
     await uploadHandler(req, res);
 
     expect(res._getStatusCode()).toBe(401);
+  });
+
+  it('accepts a valid session cookie as an alternative to UPLOAD_KEY', async () => {
+    // No uploadKey field; auth comes from the cookie.
+    arrange({ fields: { uploadKey: undefined } });
+    const { createRelease } = mockDefaultGroupDatabase();
+
+    const { req, res } = createMocks({ method: 'POST', cookies: authedCookies() });
+    await uploadHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(createRelease).toHaveBeenCalled();
+  });
+
+  it('processes both ios and android when both are present in metadata.json', async () => {
+    const { uploadFile } = arrange({
+      metadata: {
+        fileMetadata: {
+          ios: { bundle: 'ios-bundle.js', assets: [{ path: 'ios-icon.png', ext: 'png' }] },
+          android: {
+            bundle: 'android-bundle.js',
+            assets: [{ path: 'android-icon.png', ext: 'png' }],
+          },
+        },
+      } as typeof METADATA_JSON,
+    });
+    const { createRelease } = mockDefaultGroupDatabase();
+
+    const { req, res } = createMocks({ method: 'POST' });
+    await uploadHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    const paths = uploadFile.mock.calls.map((c) => c[0]);
+    expect(paths.some((p) => p.endsWith('/ios/ios-bundle.js'))).toBe(true);
+    expect(paths.some((p) => p.endsWith('/ios/ios-icon.png'))).toBe(true);
+    expect(paths.some((p) => p.endsWith('/android/android-bundle.js'))).toBe(true);
+    expect(paths.some((p) => p.endsWith('/android/android-icon.png'))).toBe(true);
+
+    const manifestData = createRelease.mock.calls[0][0].manifestData;
+    expect(manifestData.ios).toBeDefined();
+    expect(manifestData.android).toBeDefined();
+    expect(manifestData.ios.launchAsset.storageKey).toMatch(/\/ios\/ios-bundle\.js$/);
+    expect(manifestData.android.launchAsset.storageKey).toMatch(/\/android\/android-bundle\.js$/);
+  });
+
+  it('uploads every asset when a platform has multiple', async () => {
+    const { uploadFile } = arrange({
+      metadata: {
+        fileMetadata: {
+          ios: {
+            bundle: 'bundle.js',
+            assets: [
+              { path: 'a.png', ext: 'png' },
+              { path: 'b.jpg', ext: 'jpg' },
+              { path: 'c.json', ext: 'json' },
+            ],
+          },
+        },
+      } as typeof METADATA_JSON,
+    });
+    const { createRelease } = mockDefaultGroupDatabase();
+
+    const { req, res } = createMocks({ method: 'POST' });
+    await uploadHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    // 3 assets + 1 launch asset = 4 uploads.
+    expect(uploadFile).toHaveBeenCalledTimes(4);
+
+    const manifestData = createRelease.mock.calls[0][0].manifestData;
+    expect(manifestData.ios.assets.map((a: { filePath: string }) => a.filePath).sort()).toEqual([
+      'a.png',
+      'b.jpg',
+      'c.json',
+    ]);
+    const contentTypes = uploadFile.mock.calls.map((c) => c[2]?.contentType).sort();
+    expect(contentTypes).toEqual([
+      'application/javascript',
+      'application/json',
+      'image/jpeg',
+      'image/png',
+    ]);
+  });
+
+  it("defaults expoConfig to {} when the zip doesn't contain expoconfig.json", async () => {
+    arrange({ hasExpoConfig: false });
+    const { createRelease } = mockDefaultGroupDatabase();
+
+    const { req, res } = createMocks({ method: 'POST' });
+    await uploadHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    const manifestData = createRelease.mock.calls[0][0].manifestData;
+    expect(manifestData.ios.expoConfig).toEqual({});
+  });
+
+  it('uses the same id for the release row, the storage keys, and the response', async () => {
+    const { uploadFile } = arrange();
+    const { createRelease } = mockDefaultGroupDatabase();
+
+    const { req, res } = createMocks({ method: 'POST' });
+    await uploadHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    const releaseRow = createRelease.mock.calls[0][0];
+    const id: string = releaseRow.id;
+    expect(typeof id).toBe('string');
+    expect(id.length).toBeGreaterThan(0);
+
+    // Every storage key is namespaced under the same release id.
+    for (const [storagePath] of uploadFile.mock.calls) {
+      expect(storagePath).toMatch(new RegExp(`^releases/${id}/`));
+    }
+
+    expect(releaseRow.path).toBe(`releases/${id}`);
+
+    const body = JSON.parse(res._getData());
+    expect(body.releaseId).toBe(id);
+    expect(body.path).toBe(`releases/${id}`);
+  });
+
+  it('removes the uploaded zip from local disk on success', async () => {
+    const { unlinkSync } = arrange();
+    mockDefaultGroupDatabase();
+
+    const { req, res } = createMocks({ method: 'POST' });
+    await uploadHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(200);
+    expect(unlinkSync).toHaveBeenCalledWith('test.zip');
+  });
+
+  it('returns 500 when an asset upload fails', async () => {
+    const { uploadFile } = arrange();
+    uploadFile.mockRejectedValueOnce(new Error('R2 unavailable'));
+    mockDefaultGroupDatabase();
+
+    const { req, res } = createMocks({ method: 'POST' });
+    await uploadHandler(req, res);
+
+    expect(res._getStatusCode()).toBe(500);
   });
 });
