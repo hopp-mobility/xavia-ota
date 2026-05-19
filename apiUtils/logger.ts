@@ -35,7 +35,7 @@ const formatMeta = (meta: any) => {
   return '';
 };
 const padLoggerName = (name: string, length: number) => {
-  return name.padEnd(length, '>');
+  return name.padEnd(length);
 };
 
 const logger = winston.createLogger({
@@ -52,7 +52,7 @@ const logger = winston.createLogger({
 
       const msg = `[${moment().utc().format('YYYY-MM-DD HH:mm:ss')}] [${level}] ${padLoggerName(
         '[' + loggerName + ']',
-        60
+        20
       )} ${logMessage} ${formatMeta(metadata)}`;
 
       return msg;
