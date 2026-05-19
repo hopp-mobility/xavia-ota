@@ -21,6 +21,7 @@ export default async function releasesHandler(req: NextApiRequest, res: NextApiR
       timestamp: r.timestamp,
       commitHash: r.commitHash,
       commitMessage: r.commitMessage,
+      updateId: r.updateId,
       updateGroupId: r.updateGroupId,
       updateGroupName: r.updateGroupName,
     }));

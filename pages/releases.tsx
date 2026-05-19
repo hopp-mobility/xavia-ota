@@ -39,6 +39,7 @@ interface Release {
   size: number;
   commitHash: string | null;
   commitMessage: string | null;
+  updateId?: string;
   updateGroupId?: string;
   updateGroupName?: string;
 }
@@ -119,7 +120,7 @@ export default function ReleasesPage() {
                 <Table variant="simple">
                   <Thead>
                     <Tr>
-                      <Th>Name</Th>
+                      <Th>Update ID</Th>
                       <Th>Runtime Version</Th>
                       <Th>Update Group</Th>
                       <Th>Commit Hash</Th>
@@ -141,8 +142,16 @@ export default function ReleasesPage() {
                         )
                         .map((release, index) => (
                           <Tr key={index}>
-                            <Td>{release.path}</Td>
-                            <Td>{release.runtimeVersion}</Td>
+                            <Td>
+                              <Tooltip label={release.updateId}>
+                                <Text>{release.updateId?.slice(0, 7)}</Text>
+                              </Tooltip>
+                            </Td>
+                            <Td>
+                              <Tooltip label={release.runtimeVersion}>
+                                <Text>{release.runtimeVersion.slice(0, 7)}</Text>
+                              </Tooltip>
+                            </Td>
                             <Td>
                               {release.updateGroupName && (
                                 <Badge
@@ -155,9 +164,7 @@ export default function ReleasesPage() {
                             </Td>
                             <Td>
                               <Tooltip label={release.commitHash}>
-                                <Text isTruncated w="10rem">
-                                  {release.commitHash}
-                                </Text>
+                                <Text>{release.commitHash?.slice(0, 7)}</Text>
                               </Tooltip>
                             </Td>
                             <Td>
