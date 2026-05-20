@@ -53,6 +53,19 @@ Expo-Extra-Params: xavia-user-id="abc123"
 
 The server parses the dictionary, extracts the `xavia-user-id` value, and treats it as an opaque string. Missing key, missing header, or a malformed dictionary → the resolver falls back to the default group.
 
+### Downgrade protection
+
+When you use a `fingerprint` runtime version that intentionally excludes `expo.version` (so OTAs can span native builds), the server may otherwise serve an older release to a newer native binary that was never published to Xavia. To opt into protection, send the running app's version alongside the user id:
+
+```ts
+import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
+
+await Updates.setExtraParamAsync('xavia-app-version', Constants.expoConfig?.version ?? '');
+```
+
+The manifest endpoint compares `xavia-app-version` against the candidate release's `expoConfig.version` using semver. If the release is strictly older, it returns `noUpdateAvailable`. If either side is missing or unparseable, the server logs a warning and serves the update anyway (fail open) — the protection only kicks in when both sides parse cleanly.
+
 ### Uploading to a group
 
 `POST /api/upload` accepts an optional `updateGroup` form field containing the group **name** (not id). When omitted, the release lands in the default group. Unknown group names are rejected with `400`.
