@@ -2,6 +2,7 @@ import FormData from 'form-data';
 import moment from 'moment';
 
 import { NextApiRequest, NextApiResponse } from 'next';
+import semver from 'semver';
 import { parseDictionary, serializeDictionary } from 'structured-headers';
 
 import { ConfigHelper } from '../../apiUtils/helpers/ConfigHelper';
@@ -39,6 +40,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
   }
 
   const userId = extractExtraParam(req, 'xavia-user-id');
+  const clientAppVersion = extractExtraParam(req, 'xavia-app-version');
 
   logger.info('A client requested a release', {
     runtimeVersion: req.headers['expo-runtime-version'],
@@ -47,6 +49,7 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
     apiVersion: req.headers['expo-api-version'],
     currentUpdateId: req.headers['expo-current-update-id'],
     userId,
+    clientAppVersion,
   });
 
   const protocolVersionMaybeArray = req.headers['expo-protocol-version'];
@@ -106,6 +109,41 @@ export default async function manifestEndpoint(req: NextApiRequest, res: NextApi
       res.json({ error: error.message });
     }
     return;
+  }
+
+  // Downgrade protection. The fingerprint runtimeVersion is deliberately
+  // decoupled from expo.version so OTAs can span native builds — but that
+  // means we could otherwise serve a v1.0 release to a v1.1 native binary
+  // that was built without going through Xavia. Compare semver and refuse
+  // to downgrade if both sides parse cleanly.
+  if (clientAppVersion) {
+    const releaseAppVersion =
+      typeof (bundle.expoConfig as { version?: unknown })?.version === 'string'
+        ? ((bundle.expoConfig as { version: string }).version)
+        : null;
+    const clientParsed = semver.coerce(clientAppVersion);
+    const releaseParsed = releaseAppVersion ? semver.coerce(releaseAppVersion) : null;
+
+    if (!clientParsed || !releaseParsed) {
+      logger.warn('Could not compare versions for downgrade protection; serving update anyway', {
+        clientAppVersion,
+        releaseAppVersion,
+      });
+    } else if (semver.lt(releaseParsed, clientParsed)) {
+      logger.info('Refusing to downgrade client. Returning NoUpdateAvailable.', {
+        clientAppVersion,
+        releaseAppVersion,
+        runtimeVersion,
+        userId,
+      });
+      try {
+        await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
+      } catch (error: any) {
+        res.statusCode = 404;
+        res.json({ error: error.message });
+      }
+      return;
+    }
   }
 
   try {

@@ -14,7 +14,7 @@ const ASSET_BASE_URL = 'https://cdn.test.example';
 
 const baseManifestData: ManifestData = {
   ios: {
-    expoConfig: { name: 'test-app' },
+    expoConfig: { name: 'test-app', version: '1.2.0' },
     launchAsset: {
       filePath: 'bundle.js',
       storageKey: 'releases/release-id/ios/bundle.js',
@@ -157,7 +157,7 @@ describe('Manifest API', () => {
     );
     expect(manifest.assets).toHaveLength(1);
     expect(manifest.assets[0].url).toBe(`${ASSET_BASE_URL}/releases/release-id/ios/icon.png`);
-    expect(manifest.extra.expoClient).toEqual({ name: 'test-app' });
+    expect(manifest.extra.expoClient).toEqual({ name: 'test-app', version: '1.2.0' });
     expect(createTracking).toHaveBeenCalledWith(
       expect.objectContaining({ releaseId: 'release-id', platform: 'ios' })
     );
@@ -236,6 +236,110 @@ describe('Manifest API', () => {
     await manifestEndpoint(req, res);
 
     expect(getLatestReleaseForUser).toHaveBeenCalledWith('1.0.0', 'user-42');
+  });
+
+  describe('downgrade protection', () => {
+    function setup(release: Release = baseRelease) {
+      (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
+        getLatestReleaseForUser: jest.fn().mockResolvedValue(release),
+        createTracking: jest.fn().mockResolvedValue(undefined),
+      });
+      (UpdateHelper.createNoUpdateAvailableDirectiveAsync as jest.Mock).mockResolvedValue({
+        type: 'noUpdateAvailable',
+      });
+      return mockFormDataInstance();
+    }
+
+    function requestWithAppVersion(clientAppVersion: string) {
+      return createMocks({
+        method: 'GET',
+        headers: {
+          'expo-platform': 'ios',
+          'expo-runtime-version': '1.0.0',
+          'expo-protocol-version': '1',
+          'expo-current-update-id': 'something-else',
+          'expo-extra-params': `xavia-app-version="${clientAppVersion}"`,
+        },
+      });
+    }
+
+    it('refuses to downgrade when the client app version is newer than the release', async () => {
+      setup();
+      const { req, res } = requestWithAppVersion('1.3.0');
+      await manifestEndpoint(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).toHaveBeenCalled();
+    });
+
+    it('serves the update when the release is newer than the client', async () => {
+      const form = setup();
+      const { req, res } = requestWithAppVersion('1.1.0');
+      await manifestEndpoint(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).not.toHaveBeenCalled();
+      const manifestCall = form.append.mock.calls.find((call) => call[0] === 'manifest');
+      expect(manifestCall).toBeDefined();
+    });
+
+    it('serves the update when client and release versions are equal', async () => {
+      const form = setup();
+      const { req, res } = requestWithAppVersion('1.2.0');
+      await manifestEndpoint(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).not.toHaveBeenCalled();
+      const manifestCall = form.append.mock.calls.find((call) => call[0] === 'manifest');
+      expect(manifestCall).toBeDefined();
+    });
+
+    it('fails open when the release has no version in its expoConfig', async () => {
+      const releaseWithoutVersion: Release = {
+        ...baseRelease,
+        manifestData: {
+          ios: { ...baseManifestData.ios!, expoConfig: { name: 'test-app' } },
+        },
+      };
+      const form = setup(releaseWithoutVersion);
+      const { req, res } = requestWithAppVersion('1.3.0');
+      await manifestEndpoint(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).not.toHaveBeenCalled();
+      const manifestCall = form.append.mock.calls.find((call) => call[0] === 'manifest');
+      expect(manifestCall).toBeDefined();
+    });
+
+    it('fails open when the client app version is unparseable', async () => {
+      const form = setup();
+      const { req, res } = requestWithAppVersion('not-a-version');
+      await manifestEndpoint(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).not.toHaveBeenCalled();
+      const manifestCall = form.append.mock.calls.find((call) => call[0] === 'manifest');
+      expect(manifestCall).toBeDefined();
+    });
+
+    it('serves the update when the client does not send xavia-app-version', async () => {
+      const form = setup();
+      const { req, res } = createMocks({
+        method: 'GET',
+        headers: {
+          'expo-platform': 'ios',
+          'expo-runtime-version': '1.0.0',
+          'expo-protocol-version': '1',
+          'expo-current-update-id': 'something-else',
+        },
+      });
+      await manifestEndpoint(req, res);
+
+      expect(res._getStatusCode()).toBe(200);
+      expect(UpdateHelper.createNoUpdateAvailableDirectiveAsync).not.toHaveBeenCalled();
+      const manifestCall = form.append.mock.calls.find((call) => call[0] === 'manifest');
+      expect(manifestCall).toBeDefined();
+    });
   });
 
   it('treats unknown / malformed / missing Extra-Params as anonymous', async () => {
