@@ -36,7 +36,6 @@ interface Release {
   path: string;
   runtimeVersion: string;
   timestamp: string;
-  size: number;
   commitHash: string | null;
   commitMessage: string | null;
   updateId?: string;
@@ -126,12 +125,29 @@ export default function ReleasesPage() {
                       <Th>Commit Hash</Th>
                       <Th>Commit Message</Th>
                       <Th>Timestamp (UTC)</Th>
-                      <Th>File Size</Th>
                       <Th>Actions</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {(() => {
+                      // The active release is per update group — clients on
+                      // group X resolve to the latest row tagged X, regardless
+                      // of how recent rows in other groups are.
+                      const latestByGroup = new Map<string, Release>();
+                      for (const r of releases) {
+                        if (!r.updateGroupId) continue;
+                        const existing = latestByGroup.get(r.updateGroupId);
+                        if (
+                          !existing ||
+                          new Date(r.timestamp).getTime() > new Date(existing.timestamp).getTime()
+                        ) {
+                          latestByGroup.set(r.updateGroupId, r);
+                        }
+                      }
+                      const activeReleasePaths = new Set(
+                        Array.from(latestByGroup.values()).map((r) => r.path)
+                      );
+
                       const visibleReleases = filterGroupName
                         ? releases.filter((r) => r.updateGroupName === filterGroupName)
                         : releases;
@@ -177,9 +193,8 @@ export default function ReleasesPage() {
                             <Td className="min-w-[14rem]">
                               {moment(release.timestamp).utc().format('MMM, Do  HH:mm')}
                             </Td>
-                            <Td>{formatFileSize(release.size)}</Td>
                             <Td justifyItems="center">
-                              {index === 0 ? (
+                              {activeReleasePaths.has(release.path) ? (
                                 <Tag size="lg" colorScheme="green">
                                   Active Release
                                 </Tag>
@@ -276,10 +291,3 @@ export default function ReleasesPage() {
   );
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
