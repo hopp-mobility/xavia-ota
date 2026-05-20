@@ -36,7 +36,6 @@ interface Release {
   path: string;
   runtimeVersion: string;
   timestamp: string;
-  size: number;
   commitHash: string | null;
   commitMessage: string | null;
   updateId?: string;
@@ -126,7 +125,6 @@ export default function ReleasesPage() {
                       <Th>Commit Hash</Th>
                       <Th>Commit Message</Th>
                       <Th>Timestamp (UTC)</Th>
-                      <Th>File Size</Th>
                       <Th>Actions</Th>
                     </Tr>
                   </Thead>
@@ -177,7 +175,6 @@ export default function ReleasesPage() {
                             <Td className="min-w-[14rem]">
                               {moment(release.timestamp).utc().format('MMM, Do  HH:mm')}
                             </Td>
-                            <Td>{formatFileSize(release.size)}</Td>
                             <Td justifyItems="center">
                               {index === 0 ? (
                                 <Tag size="lg" colorScheme="green">
@@ -276,10 +273,3 @@ export default function ReleasesPage() {
   );
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
