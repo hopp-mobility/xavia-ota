@@ -33,7 +33,9 @@ export default async function uploadHandler(req: NextApiRequest, res: NextApiRes
     const file = files.file?.[0];
     const runtimeVersion = fields.runtimeVersion?.[0];
     const commitHash = fields.commitHash?.[0];
-    const commitMessage = fields.commitMessage?.[0] || 'No message provided';
+    // Keep only the commit subject (first line). The DB column is
+    // VARCHAR(255) and full messages routinely overflow that.
+    const commitMessage = (fields.commitMessage?.[0] || 'No message provided').split('\n')[0];
     const updateGroupName = fields.updateGroup?.[0];
 
     if (!file || !runtimeVersion || !commitHash) {
