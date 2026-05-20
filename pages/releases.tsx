@@ -130,6 +130,24 @@ export default function ReleasesPage() {
                   </Thead>
                   <Tbody>
                     {(() => {
+                      // The active release is per update group — clients on
+                      // group X resolve to the latest row tagged X, regardless
+                      // of how recent rows in other groups are.
+                      const latestByGroup = new Map<string, Release>();
+                      for (const r of releases) {
+                        if (!r.updateGroupId) continue;
+                        const existing = latestByGroup.get(r.updateGroupId);
+                        if (
+                          !existing ||
+                          new Date(r.timestamp).getTime() > new Date(existing.timestamp).getTime()
+                        ) {
+                          latestByGroup.set(r.updateGroupId, r);
+                        }
+                      }
+                      const activeReleasePaths = new Set(
+                        Array.from(latestByGroup.values()).map((r) => r.path)
+                      );
+
                       const visibleReleases = filterGroupName
                         ? releases.filter((r) => r.updateGroupName === filterGroupName)
                         : releases;
@@ -176,7 +194,7 @@ export default function ReleasesPage() {
                               {moment(release.timestamp).utc().format('MMM, Do  HH:mm')}
                             </Td>
                             <Td justifyItems="center">
-                              {index === 0 ? (
+                              {activeReleasePaths.has(release.path) ? (
                                 <Tag size="lg" colorScheme="green">
                                   Active Release
                                 </Tag>
