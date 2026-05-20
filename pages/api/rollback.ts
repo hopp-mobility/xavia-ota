@@ -12,6 +12,11 @@ const logger = getLogger('rollback');
 // `manifest_data` is copied from the source release, so it references the
 // same R2 storage keys. No file copies — the assets the clients downloaded
 // for the source are reused as-is for the new row.
+//
+// The new row gets a fresh `updateId` even though the content is identical.
+// Expo treats updateId as the cache key: clients that already ran the
+// source release would see the same id and `noUpdateAvailable`, which
+// defeats the point of rolling back.
 export default async function rollbackHandler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -71,7 +76,7 @@ export default async function rollbackHandler(req: NextApiRequest, res: NextApiR
       timestamp: moment().utc().toString(),
       commitHash,
       commitMessage,
-      updateId: sourceRelease.updateId,
+      updateId: crypto.randomUUID(),
       updateGroupId,
       manifestData: sourceRelease.manifestData,
     });
