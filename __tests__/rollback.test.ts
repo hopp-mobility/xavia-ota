@@ -101,8 +101,34 @@ describe('Rollback API', () => {
         updateGroupId: 'g-prod',
         commitHash: 'new-hash',
         commitMessage: 'rollback',
-        updateId: 'old-update-id',
       })
+    );
+  });
+
+  it('issues a fresh updateId instead of reusing the source release id', async () => {
+    const createRelease = jest.fn().mockResolvedValue({});
+    (DatabaseFactory.getDatabase as jest.Mock).mockReturnValue({
+      getReleaseByPath: jest.fn().mockResolvedValue(sourceRelease),
+      getUpdateGroupByName: jest.fn(),
+      createRelease,
+    });
+
+    const { req, res } = createMocks({
+      method: 'POST',
+      body: {
+        path: 'releases/src-id',
+        runtimeVersion: '1.0.0',
+        commitHash: 'new-hash',
+        commitMessage: 'rollback',
+      },
+      cookies: authedCookies(),
+    });
+    await rollbackHandler(req, res);
+
+    const persisted = createRelease.mock.calls[0][0];
+    expect(persisted.updateId).not.toBe('old-update-id');
+    expect(persisted.updateId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     );
   });
 
